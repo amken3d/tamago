@@ -6,7 +6,7 @@
 // Use of this source code is governed by the license
 // that can be found in the LICENSE file.
 
-//go:build !linkramstart && arm
+//go:build !linkramstart && arm64
 
 package bcm2835
 
@@ -15,4 +15,4 @@ import (
 )
 
 //go:linkname ramStart runtime/goos.RamStart
-var ramStart uint32 = 0x00100000
+var ramStart uint64 = 0x00100000

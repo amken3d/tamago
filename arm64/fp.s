@@ -17,4 +17,18 @@ TEXT ·fp_enable(SB),$0
 	MSR	R0, CPACR_EL1
 	ISB	$1
 
+	// At EL2, also clear CPTR_EL2.TFP to avoid trapping FP operations.
+	// D12.2.31 CPTR_EL2, Architectural Feature Trap Register (EL2)
+	MRS	CurrentEL, R0
+	LSR	$2, R0, R0
+	AND	$0b11, R0, R0
+	CMP	$2, R0
+	BNE	fp_done
+
+	WORD	$0xd53c1140	// mrs x0, cptr_el2
+	BIC	$1<<10, R0	// clear TFP bit
+	WORD	$0xd51c1140	// msr cptr_el2, x0
+	ISB	$1
+
+fp_done:
 	RET

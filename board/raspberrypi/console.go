@@ -1,4 +1,4 @@
-// Raspberry Pi support for tamago/arm
+// Raspberry Pi support for tamago
 // https://github.com/usbarmory/tamago
 //
 // Copyright (c) the pi package authors

@@ -12,7 +12,6 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/usbarmory/tamago/arm"
 	"github.com/usbarmory/tamago/internal/reg"
 )
 
@@ -142,13 +141,13 @@ func (gpio *GPIO) PullUpDown(val uint32) {
 	//   6 - Remove the clock for the line to be modified
 
 	reg.Write(PeripheralAddress(GPPUD), uint32(val))
-	arm.Busyloop(150)
+	busyloop(150)
 
 	clkRegister := PeripheralAddress(GPPUDCLK0 + 4*uint32(gpio.num/32))
 	clkShift := uint32(gpio.num % 32)
 
 	reg.Write(clkRegister, 1<<clkShift)
-	arm.Busyloop(150)
+	busyloop(150)
 
 	reg.Write(PeripheralAddress(GPPUD), 0)
 	reg.Write(clkRegister, 0)

@@ -1,4 +1,4 @@
-// BCM2835 SoC support
+// BCM2835 SoC timer support
 // https://github.com/usbarmory/tamago
 //
 // Copyright (c) the bcm2835 package authors
@@ -6,13 +6,9 @@
 // Use of this source code is governed by the license
 // that can be found in the LICENSE file.
 
-//go:build !linkramstart && arm
+//go:build arm
 
 package bcm2835
 
-import (
-	_ "unsafe"
-)
-
-//go:linkname ramStart runtime/goos.RamStart
-var ramStart uint32 = 0x00100000
+// defined in timer_arm.s
+func read_systimer() int64

@@ -101,6 +101,9 @@ func flush_tlb()
 func write_mair_el3(val uint64)
 func write_tcr_el3(val uint64)
 func set_ttbr0_el3(addr uint64)
+func write_mair_el2(val uint64)
+func write_tcr_el2(val uint64)
+func set_ttbr0_el2(addr uint64)
 
 // ARM Architecture Reference Manual ARMv8, for ARMv8-A architecture profile
 // D5.3.1 Translation table level 0, level 1, and level 2 descriptor formats.
@@ -233,13 +236,19 @@ func (cpu *CPU) InitMMU() {
 	// set memory region attributes
 	//   * attr0: device
 	//   * attr1: memory
-	write_mair_el3(
-		MemoryRegion<<(8*memoryAttributeIndex) |
-			DeviceRegion<<(8*deviceAttributeIndex))
+	mair := MemoryRegion<<(8*memoryAttributeIndex) |
+		DeviceRegion<<(8*deviceAttributeIndex)
 
-	// set translation control register
-	write_tcr_el3(tcr)
+	el := (read_el() >> 2) & 0b11
 
-	// enable MMU
-	set_ttbr0_el3(l1pageTableStart)
+	switch el {
+	case 3:
+		write_mair_el3(mair)
+		write_tcr_el3(tcr)
+		set_ttbr0_el3(l1pageTableStart)
+	case 2:
+		write_mair_el2(mair)
+		write_tcr_el2(tcr)
+		set_ttbr0_el2(l1pageTableStart)
+	}
 }

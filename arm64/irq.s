@@ -51,9 +51,23 @@ TEXT ·handleInterrupt(SB),NOSPLIT|NOFRAME,$0
 	CALL	runtime·WakeG(SB)
 
 	// the IRQ handling goroutine is expected to unmask IRQs
+	MRS	CurrentEL, R1
+	LSR	$2, R1, R1
+	AND	$0b11, R1, R1
+	CMP	$3, R1
+	BEQ	el3_spsr
+
+	// EL2
+	WORD	$0xd53c4000	// mrs x0, spsr_el2
+	ORR	$1<<6, R0	// mask FIQs
+	WORD	$0xd51c4000	// msr spsr_el2, x0
+	B	done
+
+el3_spsr:
 	WORD	$0xd53e4000	// mrs x0, SPSR_EL3
 	ORR	$1<<6, R0	// mask FIQs
 	WORD	$0xd51e4000	// msr SPSR_EL3, x0
+
 done:
 	// restore caller registers
 	MOVD	-(16*16)(RSP), R0

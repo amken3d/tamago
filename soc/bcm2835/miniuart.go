@@ -14,7 +14,6 @@
 package bcm2835
 
 import (
-	"github.com/usbarmory/tamago/arm"
 	"github.com/usbarmory/tamago/internal/reg"
 )
 
@@ -64,10 +63,10 @@ func (hw *miniUART) Init() {
 	reg.Write(PeripheralAddress(GPFSEL1), ra)
 
 	reg.Write(PeripheralAddress(GPPUD), 0)
-	arm.Busyloop(150)
+	busyloop(150)
 
 	reg.Write(PeripheralAddress(GPPUDCLK0), (1<<14)|(1<<15))
-	arm.Busyloop(150)
+	busyloop(150)
 
 	reg.Write(PeripheralAddress(GPPUDCLK0), 0)
 	reg.Write(PeripheralAddress(AUX_MU_CNTL_REG), 3)

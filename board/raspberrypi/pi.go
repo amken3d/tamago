@@ -1,4 +1,4 @@
-// Raspberry Pi support for tamago/arm
+// Raspberry Pi support for tamago
 // https://github.com/usbarmory/tamago
 //
 // Copyright (c) the pi package authors
@@ -9,8 +9,8 @@
 // Package pi provides basic abstraction for support of different models of
 // Raspberry Pi single board computers.
 //
-// This package is only meant to be used with `GOOS=tamago GOARCH=arm` as
-// supported by the TamaGo framework for bare metal Go, see
+// This package is only meant to be used with `GOOS=tamago` as supported by
+// the TamaGo framework for bare metal Go, see
 // https://github.com/usbarmory/tamago.
 package pi
 

@@ -16,8 +16,5 @@ import (
 const WatchdogPeriod = uint64(16 * time.Microsecond)
 
 // SysTimerFreq is the frequency (Hz) of the BCM2835 free-running
-// timer (fixed at 1Hz).
+// timer (fixed at 1MHz).
 const SysTimerFreq = 1000000
-
-// defined in timer.s
-func read_systimer() int64

@@ -6,13 +6,12 @@
 // Use of this source code is governed by the license
 // that can be found in the LICENSE file.
 
-//go:build !linkramstart && arm
+//go:build arm
 
 package bcm2835
 
-import (
-	_ "unsafe"
-)
+import "github.com/usbarmory/tamago/arm"
 
-//go:linkname ramStart runtime/goos.RamStart
-var ramStart uint32 = 0x00100000
+func busyloop(count int32) {
+	arm.Busyloop(uint32(count))
+}

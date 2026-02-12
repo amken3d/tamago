@@ -28,7 +28,20 @@
 	WORD	$0xd503201f
 
 TEXT ·handleException(SB),NOSPLIT|NOFRAME,$0
+	MRS	CurrentEL, R1
+	LSR	$2, R1, R1
+	AND	$0b11, R1, R1
+	CMP	$3, R1
+	BEQ	el3_exc
+
+	// EL2
+	WORD	$0xd53c4020	// mrs x0, elr_el2
+	B	exc_cont
+
+el3_exc:
 	WORD	$0xd53e4020	// mrs x0, elr_el3
+
+exc_cont:
 	MOVD	R0, 8(RSP)	// arg
 	JMP	·systemException(SB)
 
@@ -50,6 +63,18 @@ TEXT ·vectorTable(SB),NOSPLIT|NOFRAME,$0
 // func set_vbar()
 TEXT ·set_vbar(SB),NOSPLIT,$0
 	MOVD	$·vectorTable(SB), R0
+
+	MRS	CurrentEL, R1
+	LSR	$2, R1, R1
+	AND	$0b11, R1, R1
+	CMP	$3, R1
+	BEQ	el3_vbar
+
+	// EL2
+	WORD	$0xd51cc000	// msr vbar_el2, x0
+	RET
+
+el3_vbar:
 	WORD	$0xd51ec000	// msr vbar_el3, x0
 	RET
 
