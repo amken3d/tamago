@@ -44,6 +44,41 @@ TEXT ·set_exc_stack(SB),NOSPLIT,$0-4
 
 	RET
 
+// func set_exc_stack_ns(addr uint32)
+//
+// Variant of set_exc_stack for TrustZone Normal World operation: entering
+// Monitor mode via MSR is an illegal mode change from the non-secure world
+// (on ARMv8/Cortex-A53 it sets PSTATE.IL and the next instruction takes an
+// illegal state exception). Monitor mode is unreachable in the non-secure
+// world, so its SP is never used and is not set.
+TEXT ·set_exc_stack_ns(SB),NOSPLIT,$0-4
+	MOVW addr+0(FP), R0
+
+	// set FIQ mode SP
+	WORD	$0xe321f0d1	// msr CPSR_c, 0xd1
+	MOVW R0, R13
+
+	// set IRQ mode SP
+	WORD	$0xe321f0d2	// msr CPSR_c, 0xd2
+	MOVW R0, R13
+
+	// set Supervisor mode SP
+	WORD	$0xe321f0d3	// msr CPSR_c, 0xd3
+	MOVW R0, R13
+
+	// set Abort mode SP
+	WORD	$0xe321f0d7	// msr CPSR_c, 0xd7
+	MOVW R0, R13
+
+	// set Undefined mode SP
+	WORD	$0xe321f0db	// msr CPSR_c, 0xdb
+	MOVW R0, R13
+
+	// return to System mode
+	WORD	$0xe321f0df	// msr CPSR_c, 0xdf
+
+	RET
+
 // func set_vbar(addr uint32)
 TEXT ·set_vbar(SB),NOSPLIT,$0-4
 	MOVW	addr+0(FP), R0

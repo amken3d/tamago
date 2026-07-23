@@ -16,9 +16,27 @@ import (
 func read_scr() uint32
 func write_nsacr(scr uint32)
 
+// forceNonSecure records that the environment is known to run the processor
+// in TrustZone Normal World, making the SCR-read trap probe in NonSecure
+// unnecessary (see SetNonSecure).
+var forceNonSecure bool
+
+// SetNonSecure declares that the processor is known to be running in
+// TrustZone Normal World (e.g. entered from the Raspberry Pi firmware).
+// NonSecure then returns true without performing its undefined-instruction
+// trap probe, which requires fully working exception vectors and a sane
+// SCTLR at probe time.
+func SetNonSecure() {
+	forceNonSecure = true
+}
+
 // NonSecure returns whether the processor security mode is non-secure (e.g.
 // TrustZone Normal World.
 func (cpu *CPU) NonSecure() bool {
+	if forceNonSecure {
+		return true
+	}
+
 	if !cpu.security {
 		return false
 	}

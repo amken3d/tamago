@@ -40,9 +40,44 @@ var ARM = &arm.CPU{
 //go:linkname ramStackOffset runtime/goos.RamStackOffset
 var ramStackOffset uint32 = 0x100000 // 1 MB
 
+// Init0 performs the CPU-level initialization triggered before runtime setup
+// (pre World start), to be called from a board package runtime/goos.Hwinit0
+// hook. The MMU and caches are enabled here, before runtime.check: on
+// Cortex-A53 (Pi Zero 2 W) the 64-bit atomics used by runtime.check
+// (LDREX/STREX) only work on cacheable normal memory. The peripheral base is
+// also set here, as runtime setup itself uses SoC peripherals before Hwinit1
+// (e.g. the RNG for schedinit's randinit).
+func Init0(base uint32) {
+	peripheralBase = base
+
+	// The default reserved-area location (RamStart = 0x0) cannot be used
+	// on the Raspberry Pi: the firmware parks CPU cores 1-3 in a spin-loop
+	// stub at 0x0-0x100, which the vector table would overwrite. Place the
+	// 64 kB reserved area at 0x10000 instead; the image TEXT is linked at
+	// 0x20000 to leave room (see the application Makefile).
+	arm.SetVectorTableStart(0x10000)
+
+	// The Pi firmware enters the kernel in TrustZone Normal World; skip
+	// the SCR-read trap probe in arm.NonSecure (secure-only registers such
+	// as SCR/MVBAR must not be touched).
+	arm.SetNonSecure()
+
+	ARM.InitEarly()
+	ARM.EnableVFP()
+
+	// Coherency (CPUECTLR.SMPEN) is already enabled by the Pi firmware's
+	// boot stub (armstub7.S) before the kernel is entered. TamaGo's
+	// EnableSMP writes the Cortex-A7 ACTLR.SMP bit, which does not exist
+	// on the Cortex-A53 and may trap from the non-secure world — skip it.
+
+	// MMU initialization is required to take advantage of data cache
+	ARM.InitMMU()
+	ARM.EnableCache()
+}
+
 //go:linkname nanotime runtime/goos.Nanotime
 func nanotime() int64 {
-	return read_systimer()*ARM.TimerMultiplier + ARM.TimerOffset
+	return int64(float64(read_systimer())*ARM.TimerMultiplier) + ARM.TimerOffset
 }
 
 // Init takes care of the lower level initialization triggered early in runtime
@@ -50,17 +85,11 @@ func nanotime() int64 {
 func Init(base uint32) {
 	peripheralBase = base
 
-	ARM.Init()
-	ARM.EnableVFP()
+	// deferred from hwinit0: assigning these hooks allocates, which
+	// requires the runtime to be initialized
+	ARM.InitGoosHooks()
 
-	// required when booting in SDP mode
-	ARM.EnableSMP()
-
-	// MMU initialization is required to take advantage of data cache
-	ARM.InitMMU()
-	ARM.EnableCache()
-
-	ARM.TimerMultiplier = refFreq / SysTimerFreq
+	ARM.TimerMultiplier = float64(refFreq) / float64(SysTimerFreq)
 
 	// initialize serial console
 	MiniUART.Init()

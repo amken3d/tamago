@@ -30,6 +30,15 @@ const (
 // linknamed by application as needed
 var vecTableStart uint32
 
+// SetVectorTableStart overrides the location of the 64 kB reserved area
+// (vector table, L1/L2 page tables, exception stack), which otherwise
+// defaults to RamStart. It must be called before Init/InitEarly and the
+// address must be 16 kB aligned (L1 page table alignment: the L1 table is
+// placed at this address + 0x4000).
+func SetVectorTableStart(addr uint32) {
+	vecTableStart = addr
+}
+
 // excStack is the exception stack address set by initVectorTable,
 // read by exception_v5.s which cannot use the ARMv6+ banked SP MRS.
 var excStack uint32
@@ -42,6 +51,7 @@ const (
 
 // defined in exception.s or exception_v5.s (see build constraints)
 func set_exc_stack(addr uint32)
+func set_exc_stack_ns(addr uint32)
 func set_vbar(addr uint32)
 func set_mvbar(addr uint32)
 func resetHandler()
@@ -173,5 +183,12 @@ func (cpu *CPU) initVectorTable() {
 	// Set the stack pointer for exception modes to provide a stack when
 	// summoned by exception vectors.
 	excStack = cpu.vbar + excStackOffset + excStackSize
-	set_exc_stack(excStack)
+
+	if forceNonSecure {
+		// Monitor mode cannot be entered from the non-secure world
+		// (see set_exc_stack_ns).
+		set_exc_stack_ns(excStack)
+	} else {
+		set_exc_stack(excStack)
+	}
 }

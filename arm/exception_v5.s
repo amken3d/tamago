@@ -136,3 +136,10 @@ TEXT ·fiqHandler(SB),NOSPLIT|NOFRAME,$0
 
 TEXT ·nullHandler(SB),NOSPLIT|NOFRAME,$0
 	MOVW.S	R14, R15
+
+// func set_exc_stack_ns(addr uint32)
+//
+// On cores without TrustZone there is no Monitor mode to skip: identical to
+// set_exc_stack (provided so arm.6 and pre-arm.6 builds share the same API).
+TEXT ·set_exc_stack_ns(SB),NOSPLIT,$0-4
+	B	·set_exc_stack(SB)

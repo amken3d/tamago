@@ -83,11 +83,24 @@ func (cpu *CPU) DefaultIdleGovernor(pollUntil int64) {
 // exception vector table, L1/L2 page tables and the exception stack
 // (see https://github.com/usbarmory/tamago/wiki/Internals#memory-layout).
 func (cpu *CPU) Init() {
-	goos.Exit = exit
-	goos.Idle = cpu.DefaultIdleGovernor
+	cpu.InitGoosHooks()
+	cpu.InitEarly()
+}
 
+// InitEarly performs the allocation-free part of Init (feature probing and
+// exception vector table setup), safe to call before the Go runtime is
+// initialized (e.g. from a runtime/goos.Hwinit0 hook).
+func (cpu *CPU) InitEarly() {
 	cpu.initFeatures()
 	cpu.initVectorTable()
+}
+
+// InitGoosHooks registers the runtime/goos Exit and Idle hooks. It allocates
+// (method value closure) and therefore must only be called once the runtime
+// allocator is up (e.g. from a runtime/goos.Hwinit1 hook).
+func (cpu *CPU) InitGoosHooks() {
+	goos.Exit = exit
+	goos.Idle = cpu.DefaultIdleGovernor
 }
 
 // Mode returns the processor mode.

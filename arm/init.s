@@ -29,9 +29,26 @@ TEXT cpuinit(SB),NOSPLIT|NOFRAME,$0
 	CMP	$0x1a, R0	// HYP mode
 	B.NE	after_eret
 
+	// Entered in HYP mode (e.g. Raspberry Pi firmware): configure the
+	// hypervisor state we are about to leave behind, as its reset values
+	// can otherwise trap PL1 operation back to HYP (whose vectors are not
+	// set): allow PL1/0 access to cp10/cp11 (VFP), disable all HYP traps,
+	// zero the virtual counter offset.
+	MRC	15, 4, R1, C1, C1, 2	// HCPTR
+	BIC	$(1<<10), R1		// clear TCP10 (VFP traps)
+	BIC	$(1<<11), R1		// clear TCP11
+	MCR	15, 4, R1, C1, C1, 2
+	MOVW	$0, R1
+	MCR	15, 4, R1, C1, C1, 0	// HCR = 0: no HYP traps
+	MOVW	$0, R2
+	WORD	$0xec421f4e		// mcrr p15, 4, r1, r2, c14 (CNTVOFF = 0)
+
 	BIC	$0x1f, R0
 	ORR	$0x1d3, R0	// AIF masked, SVC mode
-	MOVW	$12(R15), R14	// add lr, pc, #12 (after_eret)
+	// add lr, pc, #8: PC reads as current instruction +8, so this yields
+	// this instruction +16 = after_eret. (Upstream uses #12, which lands
+	// one instruction past after_eret, skipping the SYS mode switch.)
+	MOVW	$8(R15), R14
 	WORD	$0xe16ff000	// msr SPSR_fsxc, r0
 	WORD	$0xe12ef30e	// msr ELR_hyp, lr
 	WORD	$0xe160006e	// eret
@@ -39,6 +56,13 @@ TEXT cpuinit(SB),NOSPLIT|NOFRAME,$0
 after_eret:
 	// enter System Mode
 	WORD	$0xe321f0df	// msr CPSR_c, 0xdf
+
+	// sanitize SCTLR: use VBAR-based vectors (clear V) taken in ARM state
+	// (clear TE), regardless of what the firmware left behind
+	MRC	15, 0, R1, C1, C0, 0
+	BIC	$(1<<13), R1	// V: low/VBAR vectors
+	BIC	$(1<<30), R1	// TE: exceptions taken in ARM state
+	MCR	15, 0, R1, C1, C0, 0
 
 	MOVW	R3, R13
 	B	_rt0_tamago_start(SB)
