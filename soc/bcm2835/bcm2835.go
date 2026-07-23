@@ -75,11 +75,6 @@ func Init0(base uint32) {
 	ARM.EnableCache()
 }
 
-//go:linkname nanotime runtime/goos.Nanotime
-func nanotime() int64 {
-	return int64(float64(read_systimer())*ARM.TimerMultiplier) + ARM.TimerOffset
-}
-
 // Init takes care of the lower level initialization triggered early in runtime
 // setup (e.g. runtime/goos.Hwinit1).
 func Init(base uint32) {
@@ -89,7 +84,7 @@ func Init(base uint32) {
 	// requires the runtime to be initialized
 	ARM.InitGoosHooks()
 
-	ARM.TimerMultiplier = float64(refFreq) / float64(SysTimerFreq)
+	setTimerMultiplier()
 
 	// initialize serial console
 	MiniUART.Init()

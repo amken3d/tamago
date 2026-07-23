@@ -53,7 +53,13 @@ var Mailbox = mailbox{}
 func init() {
 	// We don't use this region for DMA, but dma package provides a convenient
 	// block allocation system.
-	Mailbox.Region, _ = dma.NewRegion(MAILBOX_REGION_BASE|DRAM_FLAG_NOCACHE, MAILBOX_REGION_SIZE, false)
+	//
+	// The region lies within the runtime memory range (unused boot padding
+	// below the TEXT segment), hence the unsafe flag; VideoCore coherency
+	// is handled with explicit cache maintenance in Call. The ARM-side
+	// uncached SDRAM alias (DRAM_FLAG_NOCACHE) exists only on the original
+	// BCM2835 and must not be used for CPU access on BCM2836 and later.
+	Mailbox.Region, _ = dma.NewRegion(MAILBOX_REGION_BASE, MAILBOX_REGION_SIZE, true)
 }
 
 type MailboxTag struct {
@@ -120,7 +126,14 @@ func (mb *mailbox) Call(channel int, message *MailboxMessage) {
 	// terminating null tag
 	binary.LittleEndian.PutUint32(buf[offset:], 0x0)
 
-	mb.exchangeMessage(channel, uint32(addr))
+	// The VideoCore reads the message through its uncached SDRAM alias:
+	// clean the cached message out to DRAM first, then drop the (stale)
+	// cached view before parsing the response written by the VideoCore.
+	ARM.FlushDataCache()
+
+	mb.exchangeMessage(channel, uint32(addr)|DRAM_FLAG_NOCACHE)
+
+	ARM.FlushDataCache()
 
 	message.Tags = make([]MailboxTag, 0, len(message.Tags))
 	message.Code = binary.LittleEndian.Uint32(buf[4:])

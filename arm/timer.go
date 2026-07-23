@@ -108,7 +108,10 @@ func (cpu *CPU) SetAlarm(ns int64) {
 		return
 	}
 
-	set := uint64(ns) / uint64(cpu.TimerMultiplier)
+	// Dividing by a truncated multiplier would scale the absolute deadline
+	// itself: with e.g. a 19.2 MHz counter (multiplier 52.083), truncation
+	// to 52 makes alarms fire late by 0.16% of the time since boot.
+	set := uint64(float64(ns) / cpu.TimerMultiplier)
 	now := read_cntpct()
 	cnt := set - now
 

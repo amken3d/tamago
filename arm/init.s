@@ -42,6 +42,8 @@ TEXT cpuinit(SB),NOSPLIT|NOFRAME,$0
 	MCR	15, 4, R1, C1, C1, 0	// HCR = 0: no HYP traps
 	MOVW	$0, R2
 	WORD	$0xec421f4e		// mcrr p15, 4, r1, r2, c14 (CNTVOFF = 0)
+	MOVW	$3, R1
+	MCR	15, 4, R1, C14, C1, 0	// CNTHCTL: PL1 access to physical timer/counter
 
 	BIC	$0x1f, R0
 	ORR	$0x1d3, R0	// AIF masked, SVC mode

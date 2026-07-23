@@ -87,6 +87,35 @@ func (hw *miniUART) Tx(c byte) {
 	reg.Write(hw.io, uint32(c))
 }
 
+// Rx receives a single character from the serial port, returning ok=false
+// if none is available. The mini-UART RX FIFO is 8 bytes deep: at 115200
+// baud it fills in ~700 µs, so a poller must drain it at least that often
+// to avoid overruns.
+func (hw *miniUART) Rx() (c byte, ok bool) {
+	if reg.Read(hw.lsr)&0x01 == 0 {
+		return
+	}
+
+	return byte(reg.Read(hw.io)), true
+}
+
+// Read drains available data from the serial port RX FIFO into the buffer,
+// without blocking, returning the number of bytes read.
+func (hw *miniUART) Read(buf []byte) (n int, _ error) {
+	for n < len(buf) {
+		c, ok := hw.Rx()
+
+		if !ok {
+			break
+		}
+
+		buf[n] = c
+		n++
+	}
+
+	return
+}
+
 // Write data from buffer to serial port.
 func (hw *miniUART) Write(buf []byte) (n int, _ error) {
 	for _, c := range buf {
