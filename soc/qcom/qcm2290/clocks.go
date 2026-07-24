@@ -37,21 +37,37 @@ const (
 
 const clkPollSpins = 1000000
 
-// EnableSPI5Clock configures and enables the SE5 serial clock: the RCG
-// root is set to the 19.2 MHz crystal (matching the SE-internal div 1
-// configuration left by the boot chain) and the branch is voted on.
+// QUP0 SE clock register layout: per-SE RCGs are 0x130 apart starting
+// at S0 (gcc-qcm2290.c gcc_qupv3_wrap0_sN_clk_src), the branch CBCR
+// precedes each cmd_rcgr, and the HLOS vote bits are contiguous from
+// S0 = bit 10 in GCC_APCS_BRANCH_ENA_VOTE.
+const (
+	qup0S0CmdRCGR  = 0x1f148
+	qup0RCGRStride = 0x130
+	qup0S0VoteBit  = 10
+)
+
+// EnableSEClock configures and enables a QUP0 serial engine clock
+// (SE 0-5): the RCG root is set to the 19.2 MHz crystal and the branch
+// is voted on.
 //
 // U-Boot only clocks the debug UART's serial engine; every other SE's
 // GCC branch is off until enabled here, with the symptom of a FIFO
 // that accepts writes but never shifts.
-func EnableSPI5Clock() error {
-	// root: XO source, divide by 1
-	reg.Write(GCC_BASE+GCC_QUP0_S5_CMD_RCGR+0x4, cfgXODiv1)
+func EnableSEClock(se int) error {
+	if se < 0 || se > 5 {
+		return errors.New("invalid serial engine")
+	}
 
-	reg.Set(GCC_BASE+GCC_QUP0_S5_CMD_RCGR, CMD_UPDATE)
+	cmdRCGR := uint32(GCC_BASE + qup0S0CmdRCGR + se*qup0RCGRStride)
+
+	// root: XO source, divide by 1
+	reg.Write(cmdRCGR+0x4, cfgXODiv1)
+
+	reg.Set(cmdRCGR, CMD_UPDATE)
 
 	for i := 0; ; i++ {
-		if !reg.Get(GCC_BASE+GCC_QUP0_S5_CMD_RCGR, CMD_UPDATE) {
+		if !reg.Get(cmdRCGR, CMD_UPDATE) {
 			break
 		}
 
@@ -61,17 +77,22 @@ func EnableSPI5Clock() error {
 	}
 
 	// branch: HLOS vote
-	reg.Set(GCC_BASE+GCC_APCS_BRANCH_ENA_VOTE, QUP0_S5_CLK_ENA)
+	reg.Set(GCC_BASE+GCC_APCS_BRANCH_ENA_VOTE, qup0S0VoteBit+se)
 
 	for i := 0; ; i++ {
-		if !reg.Get(GCC_BASE+GCC_QUP0_S5_CBCR, CLK_OFF) {
+		if !reg.Get(cmdRCGR-0x4, CLK_OFF) {
 			break
 		}
 
 		if i >= clkPollSpins {
-			return errors.New("S5 branch stuck off")
+			return errors.New("SE branch stuck off")
 		}
 	}
 
 	return nil
+}
+
+// EnableSPI5Clock enables the SE5 serial clock (the header SPI).
+func EnableSPI5Clock() error {
+	return EnableSEClock(5)
 }

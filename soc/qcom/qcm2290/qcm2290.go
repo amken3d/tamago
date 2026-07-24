@@ -36,6 +36,9 @@ const (
 	// GENI serial engine, QUP0 SE5: the header-exposed SPI
 	SPI5_BASE = 0x04a94000
 
+	// QUP0 SE1 (ANX7625 DSI-to-DP bridge I2C)
+	I2C1_BASE = 0x04a84000
+
 	// APSS watchdog (qcom,kpss-wdt register layout)
 	WDT_BASE = 0x0f017000
 
@@ -62,6 +65,9 @@ var (
 
 	// SPI5 is the header-exposed SPI master (GPIO 14-17)
 	SPI5 = &GENISPI{Base: SPI5_BASE}
+
+	// I2C1 is the ANX7625 DSI-to-DP bridge bus
+	I2C1 = &GENII2C{Base: I2C1_BASE}
 
 	// WDT is the application processor watchdog
 	WDT = &Watchdog{Base: WDT_BASE}
