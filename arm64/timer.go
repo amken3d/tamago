@@ -94,7 +94,11 @@ func (cpu *CPU) SetAlarm(ns int64) {
 		return
 	}
 
-	set := uint64(ns) / uint64(cpu.TimerMultiplier)
+	// float division: truncating a non-integer multiplier makes the
+	// absolute tick target drift late by the truncation ratio of the
+	// total counter uptime (e.g. 52 vs 52.083 ns/tick at 19.2 MHz is
+	// ~0.16%: hundreds of ms within minutes of counter operation)
+	set := uint64(float64(ns) / cpu.TimerMultiplier)
 	now := read_cntpct()
 	cnt := set - now
 
