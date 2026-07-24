@@ -87,6 +87,13 @@ func Printk(c byte)
 // runtime setup (post World start).
 func Hwinit1()
 
+// NumCPU is the number of hardware processors the runtime should schedule
+// across; it sets the initial GOMAXPROCS. It defaults to 1 (uniprocessor)
+// and must be set before osinit (e.g. in [Hwinit0]) by SMP-capable
+// platforms, which must also provide [Task] (and typically [ProcID] and
+// [Wake]) to start and coordinate the additional processors.
+var NumCPU int32 = 1
+
 // Optional variables/functions.
 var (
 	// Bloc is an optional variable which can be set to redefine the heap
