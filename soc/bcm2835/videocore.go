@@ -125,6 +125,43 @@ func LockGPUMemory(handle uint32) (addr uint32) {
 	return binary.LittleEndian.Uint32(buf)
 }
 
+// VideoCore-managed power domains (device IDs for the set-power-state tag).
+const (
+	PowerDeviceSDCard = 0
+	PowerDeviceUART0  = 1
+	PowerDeviceUART1  = 2
+	PowerDeviceUSBHCD = 3 // the DWC2 OTG core
+	PowerDeviceI2C0   = 4
+	PowerDeviceI2C1   = 5
+	PowerDeviceI2C2   = 6
+	PowerDeviceSPI    = 7
+	PowerDeviceCCP2TX = 8
+)
+
+// SetPowerState turns a VideoCore-managed power domain on or off, waiting for
+// the rail to settle, and reports whether the device is powered afterwards.
+// The DWC2 USB core (PowerDeviceUSBHCD) reads back as all-zero registers until
+// it is powered, so this must run before touching it.
+func SetPowerState(deviceID uint32, on bool) (powered bool) {
+	state := uint32(1 << 1) // bit 1: wait for the rail to stabilize
+	if on {
+		state |= 1 << 0 // bit 0: power on
+	}
+
+	buf := make([]byte, VC_POWER_SET_STATE_LEN)
+	binary.LittleEndian.PutUint32(buf[0:], deviceID)
+	binary.LittleEndian.PutUint32(buf[4:], state)
+
+	resp := exchangeSingleTagMessage(VC_POWER_SET_STATE, buf)
+	if len(resp) < 8 {
+		return false
+	}
+
+	// response: [device id][state]; bit 0 set = powered, bit 1 set = no device
+	s := binary.LittleEndian.Uint32(resp[4:])
+	return s&0x1 != 0 && s&0x2 == 0
+}
+
 func exchangeSingleTagMessage(code uint32, buf []byte) []byte {
 	msg := &MailboxMessage{
 		Tags: []MailboxTag{
