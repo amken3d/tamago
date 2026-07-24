@@ -76,6 +76,14 @@ func (hw *miniUART) Init() {
 	hw.io = PeripheralAddress(AUX_MU_IO_REG)
 }
 
+// EnableRxInterrupt enables the mini-UART receive interrupt (AUX_MU_IER_REG
+// bit 0), so a byte arriving in the RX FIFO raises the shared AUX interrupt
+// (IRQ_AUX) at the ARM interrupt controller. The interrupt is cleared by
+// draining the FIFO (see Rx); there is no separate acknowledge.
+func (hw *miniUART) EnableRxInterrupt() {
+	reg.Write(PeripheralAddress(AUX_MU_IER_REG), 1)
+}
+
 // TX transmits a single character to the serial port.
 func (hw *miniUART) Tx(c byte) {
 	for {
