@@ -33,6 +33,9 @@ const (
 	// GENI serial engine, QUP0 SE4: the boot-chain debug UART
 	UART4_BASE = 0x04a90000
 
+	// GENI serial engine, QUP0 SE5: the header-exposed SPI
+	SPI5_BASE = 0x04a94000
+
 	// APSS watchdog (qcom,kpss-wdt register layout)
 	WDT_BASE = 0x0f017000
 
@@ -56,6 +59,9 @@ var (
 	// UART4 is the debug console (115200n8, configured by the boot
 	// chain)
 	UART4 = &GENIUART{Base: UART4_BASE}
+
+	// SPI5 is the header-exposed SPI master (GPIO 14-17)
+	SPI5 = &GENISPI{Base: SPI5_BASE}
 
 	// WDT is the application processor watchdog
 	WDT = &Watchdog{Base: WDT_BASE}
