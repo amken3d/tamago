@@ -36,6 +36,11 @@ const (
 // Peripheral interrupt source numbers (subset). Sources 0..31 live in the
 // register-1 group, sources 32..63 in the register-2 group.
 const (
+	// IRQ_SYSTIMER1 and IRQ_SYSTIMER3 are the ARM-usable system timer compare
+	// channels (0 and 2 are reserved by the VideoCore firmware).
+	IRQ_SYSTIMER1 = 1
+	IRQ_SYSTIMER3 = 3
+
 	// IRQ_AUX is the shared AUX interrupt (mini-UART, SPI1, SPI2).
 	IRQ_AUX = 29
 )

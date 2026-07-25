@@ -80,6 +80,10 @@ TEXT ·irqHandler(SB),NOSPLIT|NOFRAME,$0
 	// save caller registers
 	MOVM.DB.W	[R0-R12, R14], (R13)	// push {r0-r12, r14}
 
+	// request cooperative preemption of the interrupted goroutine (g register
+	// R10 still holds it here); folds into its next stack-growth check.
+	CALL	runtime·tamagoPreempt(SB)
+
 	SUB	$8, R13, R13
 	MOVW	$(const_IRQ_SIGNAL), R0
 	MOVW	R0, 4(R13)
