@@ -24,6 +24,9 @@ const (
 // defined in exception.s
 func set_vbar(addr uint64)
 func read_el() uint64
+func read_esr() uint64
+func read_far() uint64
+func sync_icache(start, end uint64)
 func handleException()
 func handleInterrupt()
 
@@ -45,6 +48,9 @@ func DefaultExceptionHandler(pc uintptr) {
 	isThrowing = true
 
 	print("EL", int(read_el()&0b1100)>>2, " exception\n")
+	print("  pc  ", unsafe.Pointer(pc), "\n")
+	print("  esr ", unsafe.Pointer(uintptr(read_esr())), "\n")
+	print("  far ", unsafe.Pointer(uintptr(read_far())), "\n")
 	exception.Throw(pc)
 }
 
@@ -90,6 +96,11 @@ func (cpu *CPU) initVectorTable() {
 	addJumps(vectorTable)
 	// ELx, x>0
 	addJumps(vectorTable + 0x200)
+
+	// The jump tables are written as data with the MMU and caches
+	// enabled: clean/invalidate to the point of unification or
+	// instruction fetch may see stale memory on the first exception.
+	sync_icache(vectorTable, vectorTable+0x400)
 
 	// set vector base address register
 	set_vbar(vectorTable)
