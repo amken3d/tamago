@@ -47,6 +47,8 @@ const (
 	// UART0: the debug console (PH0/PH1, configured by U-Boot)
 	UART0_BASE = 0x05000000
 
+	CPUCFG_BASE = 0x09010000
+
 	// Watchdog (sun6i layout)
 	WDT_BASE = 0x030090a0
 )
