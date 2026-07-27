@@ -93,6 +93,13 @@ func (m *MailboxMessage) Tag(code uint32) *MailboxTag {
 // message have sufficient buffer allocated for the response
 // expected.  The response replaces the input message.
 func (mb *mailbox) Call(channel int, message *MailboxMessage) {
+	// Serialize the entire transaction: the shared scratch region, the two
+	// full-cache flushes, the doorbell exchange, and the response parse must
+	// not interleave with another caller (framebuffer, USB power, SD power,
+	// GPU alloc all use the mailbox concurrently at boot).
+	mb.Lock()
+	defer mb.Unlock()
+
 	size := 8 // Message Header
 	for _, tag := range message.Tags {
 		// 3 word tag header + tag data (padded to 32-bits)
@@ -168,10 +175,8 @@ func (mb *mailbox) exchangeMessage(channel int, addr uint32) {
 		panic("Mailbox message must be 16-byte aligned")
 	}
 
-	// For now, hold a global lock so only 1 outstanding mailbox
-	// message at any time.
-	mb.Lock()
-	defer mb.Unlock()
+	// The mailbox mutex is held by the calling Call() for the whole
+	// transaction (buffer, cache flushes, exchange, parse).
 
 	// Wait for space to send
 	for (reg.Read(peripheralBase+MAILBOX_STATUS_REG) & MAILBOX_FULL) != 0 {
