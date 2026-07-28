@@ -42,6 +42,10 @@ const (
 
 	GENI_SE_PROTO_I2C = 3
 
+	// packing vector: start index bit 7, MSB-first, 8 bits, stop
+	// (geni_se_config_packing(8, 1, msb_to_lsb=true))
+	packing1x8MSB = 7<<5 | 1<<4 | 7<<1 | 1
+
 	// i2cPollSpins bounds register polling: ~60 ms of MMIO reads, ample
 	// for any 100 kHz transaction (a 16-byte transfer is ~1.5 ms) while
 	// keeping a full 112-address bus scan interactive.
@@ -79,6 +83,20 @@ func (s *GENII2C) abort() {
 	reg.Write(s.Base+SE_GENI_M_CMD_CTRL_REG, GENI_CMD_ABORT)
 	s.poll(M_CMD_ABORT_DONE)
 	reg.Write(s.Base+SE_GENI_M_IRQ_CLEAR, 0xffffffff)
+	s.drainRx()
+}
+
+// drainRx discards stale RX FIFO words: an aborted or failed command
+// (e.g. a NAK during a bus scan) can leave residue that would shift
+// every subsequent read's data.
+func (s *GENII2C) drainRx() {
+	for i := 0; i < 64; i++ {
+		if reg.Read(s.Base+SE_GENI_RX_FIFO_STATUS)&RX_FIFO_WC_MASK == 0 {
+			return
+		}
+
+		reg.Read(s.Base + SE_GENI_RX_FIFO)
+	}
 }
 
 // Probe returns the serial engine protocol and clock configuration
@@ -115,11 +133,14 @@ func (s *GENII2C) Init() error {
 	reg.Write(s.Base+SE_GENI_M_IRQ_CLEAR, 0xffffffff)
 	reg.Write(s.Base+SE_GENI_S_IRQ_CLEAR, 0xffffffff)
 
-	// one byte per FIFO word, both directions
+	// one byte per FIFO word, both directions, MSB-first: unlike the
+	// UART, the I2C firmware serializes bytes MSB-to-LSB (Linux
+	// geni_se_config_packing msb_to_lsb=true) -- with the UART's
+	// LSB-first vector every byte arrives bit-reversed on the wire
 	reg.Write(s.Base+SE_GENI_BYTE_GRAN, 0)
-	reg.Write(s.Base+SE_GENI_TX_PACKING_CFG0, packing1x8)
+	reg.Write(s.Base+SE_GENI_TX_PACKING_CFG0, packing1x8MSB)
 	reg.Write(s.Base+SE_GENI_TX_PACKING_CFG1, 0)
-	reg.Write(s.Base+SE_GENI_RX_PACKING_CFG0, packing1x8)
+	reg.Write(s.Base+SE_GENI_RX_PACKING_CFG0, packing1x8MSB)
 	reg.Write(s.Base+SE_GENI_RX_PACKING_CFG1, 0)
 
 	// 100 kHz SCL: serial clock divider and high/low/cycle counters
@@ -212,6 +233,7 @@ func (s *GENII2C) Read(addr uint8, buf []byte, stop bool) error {
 		param |= STOP_STRETCH
 	}
 
+	s.drainRx()
 	reg.Write(s.Base+SE_GENI_M_IRQ_CLEAR, 0xffffffff)
 	reg.Write(s.Base+SE_I2C_RX_TRANS_LEN, uint32(n))
 	reg.Write(s.Base+SE_GENI_M_CMD0, I2C_READ<<M_OPCODE_SHFT|param)
