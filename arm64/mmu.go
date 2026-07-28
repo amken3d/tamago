@@ -51,13 +51,36 @@ const (
 	DeviceRegion uint64 = 0b00000000
 	// Normal, Inner/Outer WB/WA/RA
 	MemoryRegion uint64 = 0b11111111
+	// Normal, Inner/Outer Non-cacheable
+	UncachedRegion uint64 = 0b01000100
 
-	deviceAttributeIndex = 0
-	memoryAttributeIndex = 1
+	deviceAttributeIndex   = 0
+	memoryAttributeIndex   = 1
+	uncachedAttributeIndex = 2
 
-	deviceAttributes = 1<<TTE_AF | TTE_OUTER_SH | TTE_AP_00<<TTE_AP | deviceAttributeIndex<<TTE_ATTR
-	memoryAttributes = 1<<TTE_AF | TTE_INNER_SH | TTE_AP_00<<TTE_AP | memoryAttributeIndex<<TTE_ATTR
+	deviceAttributes   = 1<<TTE_AF | TTE_OUTER_SH | TTE_AP_00<<TTE_AP | deviceAttributeIndex<<TTE_ATTR
+	memoryAttributes   = 1<<TTE_AF | TTE_INNER_SH | TTE_AP_00<<TTE_AP | memoryAttributeIndex<<TTE_ATTR
+	uncachedAttributes = 1<<TTE_AF | TTE_OUTER_SH | TTE_AP_00<<TTE_AP | uncachedAttributeIndex<<TTE_ATTR
 )
+
+// UncachedStart and UncachedSize optionally define a window mapped as Normal
+// Non-cacheable memory (readable/writable, never executable, unaligned access
+// permitted, no cache allocation). SoC packages set them -- via linkname
+// initialization, so the values are in place before InitMMU runs -- to carve a
+// coherent DMA arena for bus-master peripherals (e.g. OHCI descriptors) out of
+// RAM the runtime does not manage. The window must be aligned to the section
+// size at every table level that maps it (2 MB in practice) and must not
+// overlap runtime.MemRegion().
+var (
+	UncachedStart uint64
+	UncachedSize  uint64
+)
+
+// uncachedContains reports whether the section [addr, addr+size) falls inside
+// the configured uncached DMA window.
+func uncachedContains(addr, size uint64) bool {
+	return UncachedSize != 0 && addr >= UncachedStart && addr+size <= UncachedStart+UncachedSize
+}
 
 // MMU access permissions
 //
@@ -115,6 +138,7 @@ func (cpu *CPU) initL1Table(entry int, ttbr uint64, section uint64) {
 
 	memoryRegion := memoryAttributes | TTE_BLOCK
 	deviceRegion := deviceAttributes | TTE_BLOCK
+	uncachedRegion := uncachedAttributes | TTE_BLOCK
 
 	for i := uint64(entry); i < l1pageTableSize; i++ {
 		page := ttbr + 8*i
@@ -130,6 +154,8 @@ func (cpu *CPU) initL1Table(entry int, ttbr uint64, section uint64) {
 			// precisely at textStart
 			reg.Write64(page, base|TTE_TABLE)
 			cpu.initL2Table(0, base, addr)
+		case uncachedContains(addr, 1<<n):
+			reg.Write64(page, addr|uncachedRegion|TTE_EXECUTE_NEVER)
 		case addr >= ramStart && addr < textEnd:
 			reg.Write64(page, addr|memoryRegion)
 		case addr >= ramStart && addr < ramEnd:
@@ -150,6 +176,7 @@ func (cpu *CPU) initL2Table(entry int, base uint64, section uint64) {
 
 	memoryRegion := memoryAttributes | TTE_BLOCK
 	deviceRegion := deviceAttributes | TTE_BLOCK
+	uncachedRegion := uncachedAttributes | TTE_BLOCK
 
 	for i := uint64(entry); i < l2pageTableSize; i++ {
 		page := base + 8*i
@@ -165,6 +192,8 @@ func (cpu *CPU) initL2Table(entry int, base uint64, section uint64) {
 			// precisely at textStart
 			reg.Write64(page, base|TTE_TABLE)
 			cpu.initL3Table(0, base, addr)
+		case uncachedContains(addr, 1<<n):
+			reg.Write64(page, addr|uncachedRegion|TTE_EXECUTE_NEVER)
 		case addr >= ramStart && addr < textEnd:
 			reg.Write64(page, addr|memoryRegion)
 		case addr >= ramStart && addr < ramEnd:
@@ -185,12 +214,15 @@ func (cpu *CPU) initL3Table(entry int, base uint64, section uint64) {
 
 	memoryRegion := memoryAttributes | TTE_PAGE
 	deviceRegion := deviceAttributes | TTE_PAGE
+	uncachedRegion := uncachedAttributes | TTE_PAGE
 
 	for i := uint64(entry); i < l3pageTableSize; i++ {
 		page := base + 8*i
 		addr := section + (i << n)
 
 		switch {
+		case uncachedContains(addr, 1<<n):
+			reg.Write64(page, addr|uncachedRegion|TTE_EXECUTE_NEVER)
 		case addr >= ramStart && addr < textEnd:
 			reg.Write64(page, addr|memoryRegion)
 		case addr >= ramStart && addr < ramEnd:
@@ -236,9 +268,11 @@ func (cpu *CPU) InitMMU() {
 	// set memory region attributes
 	//   * attr0: device
 	//   * attr1: memory
+	//   * attr2: uncached (Normal Non-cacheable, DMA window)
 	write_mair_el1(
 		MemoryRegion<<(8*memoryAttributeIndex) |
-			DeviceRegion<<(8*deviceAttributeIndex))
+			DeviceRegion<<(8*deviceAttributeIndex) |
+			UncachedRegion<<(8*uncachedAttributeIndex))
 
 	// set translation control register
 	write_tcr_el1(tcr)
