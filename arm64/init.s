@@ -12,6 +12,11 @@
 #include "textflag.h"
 
 TEXT cpuinit(SB),NOSPLIT|NOFRAME,$0
+	// debug tripwire: 'S' = image entered
+	MOVD	$0x05000000, R7
+	MOVD	$0x53, R8
+	MOVW	R8, (R7)
+
 	MRS	CurrentEL, R0
 	LSR	$2, R0, R0
 	AND	$0b11, R0, R0
@@ -60,8 +65,9 @@ TEXT cpuinit(SB),NOSPLIT|NOFRAME,$0
 	ERET
 
 el2:
-	// debug tripwire: build a catcher vector table for EL2 at 0x40001000
-	// (2 KB aligned DRAM, caches still off). Each of the 16 vector slots
+	// debug tripwire: build a catcher vector table for EL2 at 0x40201000
+	// (2 KB aligned DRAM above the BL31-resident first 2 MB, caches
+	// still off). Each of the 16 vector slots
 	// is a synthesized 4-instruction stub:
 	//   movz x9, #slot ; movz x10, #lo16 ; movk x10, #hi16, lsl #16 ;
 	//   br x10
@@ -76,7 +82,7 @@ el2:
 	MOVD	$0xf2a0000a, R12	// movk x10, #hi16, lsl #16
 	ORR	R10<<5, R12, R12
 
-	MOVD	$0x40001000, R4
+	MOVD	$0x40201000, R4
 	MOVD	R4, R6
 	MOVD	$0, R5			// slot index
 el2_vec_loop:
@@ -126,6 +132,11 @@ init:
 	B	·cpuinit_el1(SB)
 
 TEXT ·cpuinit_el1(SB),NOSPLIT|NOFRAME,$0
+	// debug tripwire: '1' = arrived at EL1
+	MOVD	$0x05000000, R7
+	MOVD	$0x31, R8
+	MOVW	R8, (R7)
+
 	// D12.2.100 SCTLR_EL1, System Control Register (EL1)
 	MRS	SCTLR_EL1, R0
 	BIC	$1<<1, R0	// clear A bit
@@ -140,5 +151,10 @@ TEXT ·cpuinit_el1(SB),NOSPLIT|NOFRAME,$0
 	MOVD	runtime∕goos·RamStackOffset(SB), R2
 	ADD	R1, RSP
 	SUB	R2, RSP
+
+	// debug tripwire: 'R' = handing off to the Go runtime
+	MOVD	$0x05000000, R7
+	MOVD	$0x52, R8
+	MOVW	R8, (R7)
 
 	B	_rt0_tamago_start(SB)
