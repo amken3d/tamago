@@ -27,6 +27,46 @@ const (
 	VC_EXECUTE_QPU_LEN = 16
 )
 
+// VideoCore clock IDs for the clock-state/rate tags.
+const (
+	ClockV3D = 5
+)
+
+// SetClockState turns a VideoCore-managed clock on or off. Returns true if the
+// clock reads back as present and running afterwards. The V3D register block
+// bus-aborts on access while its clock is gated, so this must precede any V3D
+// register access.
+func SetClockState(clockID uint32, on bool) bool {
+	state := uint32(0)
+	if on {
+		state = 1
+	}
+	buf := make([]byte, VC_CLOCK_SET_STATE_LEN)
+	binary.LittleEndian.PutUint32(buf[0:], clockID)
+	binary.LittleEndian.PutUint32(buf[4:], state)
+
+	resp := exchangeSingleTagMessage(VC_CLOCK_SET_STATE, buf)
+	if len(resp) < 8 {
+		return false
+	}
+	s := binary.LittleEndian.Uint32(resp[4:])
+	return s&0x1 != 0 && s&0x2 == 0 // bit0 on, bit1 not-present
+}
+
+// ClockState reports whether a VideoCore clock is running (on) and present
+// (exists). Used to confirm the V3D clock is live before probing its registers.
+func ClockState(clockID uint32) (on, exists bool) {
+	buf := make([]byte, VC_CLOCK_GET_STATE_LEN)
+	binary.LittleEndian.PutUint32(buf[0:], clockID)
+
+	resp := exchangeSingleTagMessage(VC_CLOCK_GET_STATE, buf)
+	if len(resp) < 8 {
+		return false, false
+	}
+	s := binary.LittleEndian.Uint32(resp[4:])
+	return s&0x1 != 0, s&0x2 == 0
+}
+
 // V3D register block: peripheral base + 0xC00000. Only the read-only identity
 // registers are needed to confirm the compute block is powered and reachable.
 const (
