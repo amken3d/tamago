@@ -136,11 +136,20 @@ func (mb *mailbox) Call(channel int, message *MailboxMessage) {
 	// The VideoCore reads the message through its uncached SDRAM alias:
 	// clean the cached message out to DRAM first, then drop the (stale)
 	// cached view before parsing the response written by the VideoCore.
-	ARM.FlushDataCache()
+	//
+	// By-VA-to-PoC maintenance of just the message buffer, NOT a full set/way
+	// flush: set/way maintenance is architecturally power-down-only and races a
+	// second core sharing memory coherently (the bmx step generator), which can
+	// lose a cache line the other work just wrote -> heap/stack corruption that
+	// surfaces later. By-VA-to-PoC ops are broadcast to the inner-shareable
+	// domain and are SMP-safe (and cheaper -- they touch only the buffer).
+	bufStart := uint32(addr)
+	bufEnd := bufStart + uint32(size)
+	ARM.FlushDataCacheRange(bufStart, bufEnd)
 
 	mb.exchangeMessage(channel, uint32(addr)|DRAM_FLAG_NOCACHE)
 
-	ARM.FlushDataCache()
+	ARM.FlushDataCacheRange(bufStart, bufEnd)
 
 	message.Tags = make([]MailboxTag, 0, len(message.Tags))
 	message.Code = binary.LittleEndian.Uint32(buf[4:])

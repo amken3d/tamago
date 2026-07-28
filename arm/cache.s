@@ -107,3 +107,31 @@ TEXT ·cache_flush_instruction(SB),$0
 	MOVW	$0, R0
 	MCR	15, 0, R0, C7, C5, 0
 	RET
+
+// func cache_flush_data_range(start, end uint32)
+//
+// Clean and invalidate the data cache over [start,end) by MVA to the point of
+// coherency (DCCIMVAC). Unlike the set/way clean+invalidate above, by-VA-to-PoC
+// maintenance is broadcast to the inner-shareable domain, so it is SAFE while a
+// second core shares the memory coherently (the bmx step generator). Set/way is
+// architecturally power-down-only and races a coherent second core.
+TEXT ·cache_flush_data_range(SB),$0-8
+	MOVW	start+0(FP), R0
+	MOVW	end+4(FP), R1
+	WORD	$0xf57ff05f			// DMB SY
+	MRC	15, 0, R2, C0, C0, 1		// CTR
+	MOVW	R2>>16, R2
+	AND	$0xf, R2, R2			// DminLine = log2(words/line)
+	MOVW	$4, R3
+	MOVW	R3<<R2, R3			// line bytes = 4 << DminLine
+	SUB	$1, R3, R4			// line mask
+	BIC	R4, R0				// align start down to a line
+rangeloop:
+	CMP	R1, R0
+	BGE	rangedone
+	MCR	15, 0, R0, C7, C14, 1		// DCCIMVAC: clean+invalidate by MVA to PoC
+	ADD	R3, R0
+	B	rangeloop
+rangedone:
+	WORD	$0xf57ff04f			// DSB SY
+	RET
