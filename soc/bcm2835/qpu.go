@@ -67,6 +67,34 @@ func ClockState(clockID uint32) (on, exists bool) {
 	return s&0x1 != 0, s&0x2 == 0
 }
 
+// MaxClockRate returns the maximum supported rate (Hz) for a VideoCore clock.
+func MaxClockRate(clockID uint32) uint32 {
+	buf := make([]byte, VC_CLOCK_GET_MAX_RATE_LEN)
+	binary.LittleEndian.PutUint32(buf[0:], clockID)
+
+	resp := exchangeSingleTagMessage(VC_CLOCK_GET_MAX_RATE, buf)
+	if len(resp) < 8 {
+		return 0
+	}
+	return binary.LittleEndian.Uint32(resp[4:])
+}
+
+// SetClockRate sets a VideoCore clock to rate (Hz) and returns the actual rate
+// granted. On the V3D clock this is what actually spins the domain up on
+// firmware that leaves it gated: SetClockState alone (rate 0) does not start it.
+func SetClockRate(clockID, rate uint32) uint32 {
+	buf := make([]byte, VC_CLOCK_SET_RATE_LEN)
+	binary.LittleEndian.PutUint32(buf[0:], clockID)
+	binary.LittleEndian.PutUint32(buf[4:], rate)
+	binary.LittleEndian.PutUint32(buf[8:], 0) // do not skip setting turbo
+
+	resp := exchangeSingleTagMessage(VC_CLOCK_SET_RATE, buf)
+	if len(resp) < 8 {
+		return 0
+	}
+	return binary.LittleEndian.Uint32(resp[4:])
+}
+
 // V3D register block: peripheral base + 0xC00000. Only the read-only identity
 // registers are needed to confirm the compute block is powered and reachable.
 const (
