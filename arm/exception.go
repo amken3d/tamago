@@ -81,9 +81,40 @@ type VectorTable struct {
 
 // DefaultExceptionHandler handles an exception by printing its vector and
 // processor mode before panicking.
+//
+// For aborts it also reports the fault status and faulting address (DFSR/DFAR
+// for a data abort, IFSR/IFAR for a prefetch abort). Without those, an abort
+// report says only that memory access failed somewhere -- with them it names the
+// address, which is the difference between diagnosing a stray write and guessing
+// at it. The status register's encoding is in the ARM ARM (B3.13.3): the low
+// bits give the fault type (0b00101 translation, 0b01101 permission, ...) and
+// bit 11 (WnR) distinguishes a write from a read.
 func DefaultExceptionHandler(off int) {
 	print("exception: vector ", off, " mode ", int(read_cpsr()&0x1f), "\n")
+
+	// Printed in decimal on purpose: the runtime's print formats integers
+	// without allocating, and allocating inside a fault handler -- on the system
+	// stack, with a heap that may be exactly what is corrupted -- risks faulting
+	// again and losing the report entirely.
+	switch off {
+	case DATA_ABORT:
+		dfsr := read_dfsr()
+		print("data abort: DFAR(dec) ", int64(read_dfar()),
+			" DFSR ", int64(dfsr), " status ", int64(dfsr&0x40f), " ", wnr(dfsr), "\n")
+	case PREFETCH_ABORT:
+		print("prefetch abort: IFAR(dec) ", int64(read_ifar()), " IFSR ", int64(read_ifsr()), "\n")
+	}
+
 	panic("unhandled exception")
+}
+
+// wnr decodes DFSR bit 11: whether the aborted access was a write or a read.
+func wnr(dfsr uint32) string {
+	if dfsr&(1<<11) != 0 {
+		return "write"
+	}
+
+	return "read"
 }
 
 // SystemExceptionHandler allows to override the default exception handler

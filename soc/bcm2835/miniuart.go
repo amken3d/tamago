@@ -18,6 +18,15 @@ import (
 	"github.com/usbarmory/tamago/internal/reg"
 )
 
+// AUX_ENABLES bits. The three auxiliary peripherals -- mini-UART, SPI1 and
+// SPI2 -- share this one register, so it must be read-modify-written: a blind
+// write here disables the other two.
+const (
+	AUX_ENABLE_MINIUART = 0 // bit position, not a mask: see reg.Set
+	AUX_ENABLE_SPI1     = 1
+	AUX_ENABLE_SPI2     = 2
+)
+
 const (
 	AUX_ENABLES     = 0x215004
 	AUX_MU_IO_REG   = 0x215040
@@ -44,7 +53,11 @@ var MiniUART = &miniUART{}
 
 // Init initializes the MiniUART.
 func (hw *miniUART) Init() {
-	reg.Write(PeripheralAddress(AUX_ENABLES), 1)
+	// Set only our own enable bit. This used to write 1 outright, which
+	// silently cleared SPI1 and SPI2 -- so bringing up SPI1 and then touching
+	// the console (or the reverse) turned one of them off, presenting as random
+	// link failures rather than as a conflict.
+	reg.Set(PeripheralAddress(AUX_ENABLES), 0) // bit 0: mini-UART
 	reg.Write(PeripheralAddress(AUX_MU_IER_REG), 0)
 	reg.Write(PeripheralAddress(AUX_MU_CNTL_REG), 0)
 	reg.Write(PeripheralAddress(AUX_MU_LCR_REG), 3)

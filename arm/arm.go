@@ -68,6 +68,12 @@ type CPU struct {
 
 // defined in arm.s
 func read_cpsr() uint32
+
+// Fault status/address registers, read when reporting an abort.
+func read_dfsr() uint32
+func read_dfar() uint32
+func read_ifsr() uint32
+func read_ifar() uint32
 func exit(int32)
 
 // DefaultIdleGovernor is the default CPU idle time management function

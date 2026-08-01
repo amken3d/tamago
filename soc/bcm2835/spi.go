@@ -60,9 +60,26 @@ type SPI struct {
 // MOSI, SCLK).
 var SPI0 = &SPI{}
 
-// Init initializes the SPI0 master with the argument SPI mode (0-3) and
-// clock frequency in Hz, muxing GPIO7-11 to their SPI0 function (ALT0).
+// Init initializes the SPI0 master with the argument SPI mode (0-3) and clock
+// frequency in Hz, muxing GPIO7-11 (CE1, CE0, MISO, MOSI, SCLK) to ALT0.
+//
+// Use InitBus instead on a board that repurposes the hardware chip-selects:
+// GPIO7 and GPIO8 are ordinary pins until this function claims them, and a
+// carrier is free to wire them to something else entirely.
 func (hw *SPI) Init(mode int, hz uint32) error {
+	return hw.InitBus(mode, hz, true)
+}
+
+// InitBus is Init with control over the hardware chip-selects.
+//
+// With ce false only MISO, MOSI and SCLK are muxed, leaving GPIO7 and GPIO8
+// alone for the board to use and for the caller to drive its own chip-selects
+// as plain GPIO. That is not an exotic case: a board with more than two SPI
+// devices needs software chip-selects anyway, and one carrier here wires both
+// CE pins to endstop inputs -- muxing them would turn two endstops into
+// chip-select outputs, with a symptom (homing fails) that points nowhere near
+// the cause (something initialised SPI).
+func (hw *SPI) InitBus(mode int, hz uint32, ce bool) error {
 	hw.Lock()
 	defer hw.Unlock()
 
@@ -74,8 +91,12 @@ func (hw *SPI) Init(mode int, hz uint32) error {
 		return errors.New("invalid SPI clock frequency")
 	}
 
-	// CE1, CE0, MISO, MOSI, SCLK
-	for _, num := range []int{7, 8, 9, 10, 11} {
+	pins := []int{9, 10, 11} // MISO, MOSI, SCLK
+	if ce {
+		pins = append(pins, 7, 8) // CE1, CE0
+	}
+
+	for _, num := range pins {
 		gpio, err := NewGPIO(num)
 
 		if err != nil {
