@@ -36,11 +36,11 @@ import (
 const (
 	AUXSPI1_BASE = 0x215080
 
-	AUXSPI_CNTL0 = 0x00
-	AUXSPI_CNTL1 = 0x04
-	AUXSPI_STAT  = 0x08
-	AUXSPI_PEEK  = 0x0c // datasheet says 0x14
-	AUXSPI_IO    = 0x20 // datasheet says 0x10
+	AUXSPI_CNTL0  = 0x00
+	AUXSPI_CNTL1  = 0x04
+	AUXSPI_STAT   = 0x08
+	AUXSPI_PEEK   = 0x0c // datasheet says 0x14
+	AUXSPI_IO     = 0x20 // datasheet says 0x10
 	AUXSPI_TXHOLD = 0x30
 )
 
@@ -378,39 +378,71 @@ func (hw *auxSPI) Transfer(tx []byte) (rx []byte, err error) {
 
 	rx = make([]byte, len(tx))
 
+	// Drain stale receive data ONCE, before the frame starts.
+	//
+	// The earlier version did this before every byte, which is where much of
+	// the cost went: it is a peripheral-bus read, and reads on that bus stall
+	// where writes are posted. Draining once is enough -- from here the loop
+	// accounts for every byte it queues, so anything arriving later is this
+	// frame's.
+	for hw.stat()&AUXSPI_STAT_RX_EMPTY == 0 {
+		reg.Read(hw.reg(AUXSPI_IO))
+	}
+
 	if hw.csPin != nil {
 		hw.csPin.Low()
 	}
 
-	for i, b := range tx {
-		// Drain anything stale so a leftover entry cannot be mistaken for this
-		// byte's reply.
-		for hw.stat()&AUXSPI_STAT_RX_EMPTY == 0 {
-			reg.Read(hw.reg(AUXSPI_IO))
+	// Keep the FIFOs busy instead of walking one byte at a time.
+	//
+	// This peripheral has a four-entry transmit FIFO and a four-entry receive
+	// FIFO, and the byte-at-a-time loop used neither: it wrote one byte, then
+	// polled the status register until that byte's reply came back, so every
+	// byte cost a round trip through the shift register plus several status
+	// reads. Measured on a Crea8 link, a 32-byte transfer took 160us at 8 MHz
+	// where the wire itself needs 32.
+	//
+	// Queue as many as the transmit FIFO holds, drain whatever has arrived,
+	// repeat. The outstanding count is capped so the receive FIFO cannot
+	// overflow: every queued byte produces exactly one received byte, and a
+	// receive FIFO that overflows drops data silently.
+	const maxOutstanding = 4
+
+	deadline := time.Now().Add(spiTimeout)
+
+	var txi, rxi int
+
+	for rxi < len(tx) {
+		for txi < len(tx) && txi-rxi < maxOutstanding &&
+			hw.stat()&AUXSPI_STAT_TX_FULL == 0 {
+
+			// Every byte but the last goes through TXHOLD, which keeps the
+			// chip-select asserted; the last goes through IO so the select
+			// releases after it. A frame is one CS assertion.
+			addr := hw.reg(AUXSPI_TXHOLD)
+			if txi == len(tx)-1 {
+				addr = hw.reg(AUXSPI_IO)
+			}
+
+			reg.Write(addr, uint32(tx[txi])<<auxSPIShift)
+			txi++
 		}
 
-		if err := hw.wait(func(s uint32) bool { return s&AUXSPI_STAT_TX_FULL == 0 }); err != nil {
-			hw.release()
-			return rx, err
+		for rxi < txi && hw.stat()&AUXSPI_STAT_RX_EMPTY == 0 {
+			// The receive word is right-justified where the transmit word is
+			// left-justified; this peripheral is asymmetric and Probe exists to
+			// show the whole word rather than have it assumed.
+			rx[rxi] = byte(reg.Read(hw.reg(AUXSPI_IO)))
+			rxi++
 		}
 
-		addr := hw.reg(AUXSPI_TXHOLD) // keep CS asserted
-		if i == len(tx)-1 {
-			addr = hw.reg(AUXSPI_IO) // last byte: release CS
+		if time.Now().After(deadline) {
+			if hw.csPin != nil {
+				hw.csPin.High()
+			}
+
+			return rx, ErrSPITimeout
 		}
-
-		reg.Write(addr, uint32(b)<<auxSPIShift)
-
-		// Wait for the reply to this byte.
-		if err := hw.wait(func(s uint32) bool { return s&AUXSPI_STAT_RX_EMPTY == 0 }); err != nil {
-			hw.release()
-			return rx, err
-		}
-
-		// The receive word's alignment is not stated as plainly as the
-		// transmit side's; Probe (and `link raw`) exist to show the whole word
-		// so this can be read off the hardware rather than assumed.
-		rx[i] = byte(reg.Read(hw.reg(AUXSPI_IO)))
 	}
 
 	// Let the module finish, including the minimum CS-high time, so a caller
