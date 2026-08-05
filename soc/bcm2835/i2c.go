@@ -15,8 +15,14 @@ import (
 	"github.com/usbarmory/tamago/internal/reg"
 )
 
-// BSC1 is the I2C controller exposed on GPIO2 (SDA1) / GPIO3 (SCL1).
+// BSC0 is the I2C controller on GPIO0 (SDA0) / GPIO1 (SCL0), and BSC1 the one
+// on GPIO2 (SDA1) / GPIO3 (SCL1).
+//
+// GPIO0/1 are the HAT ID pins. On a board carrying an ID EEPROM to the HAT
+// specification they are the only way to ask the hardware what it is, rather
+// than being told by configuration that may have come from a different board.
 const (
+	BSC0_BASE = 0x205000
 	BSC1_BASE = 0x804000
 
 	bscC    = 0x00 // control
@@ -40,18 +46,32 @@ const (
 
 // I2C is a BCM2835 BSC (I2C) master.
 type I2C struct {
-	base   uint32
-	inited bool
+	offset   uint32 // BSCn_BASE
+	sda, scl int    // the pins ALT0 puts the bus on
+	base     uint32
+	inited   bool
 }
 
-// I2C1 is the BSC1 controller (GPIO2/GPIO3, ALT0).
-var I2C1 = &I2C{}
+// I2C is a BCM2835 BSC (I2C) master.
+//
+// I2C0 is BSC0 on GPIO0/GPIO1 (the HAT ID pins) and I2C1 is BSC1 on
+// GPIO2/GPIO3 (the general-purpose bus on the 40-way header).
+var (
+	I2C0 = &I2C{offset: BSC0_BASE, sda: 0, scl: 1}
+	I2C1 = &I2C{offset: BSC1_BASE, sda: 2, scl: 3}
+)
 
 // Init muxes the pins and programs the bus clock (Hz).
 func (b *I2C) Init(hz uint32) error {
-	b.base = PeripheralAddress(BSC1_BASE)
+	// Zero values keep the pre-existing behaviour: an I2C built by a caller
+	// rather than taken from I2C0/I2C1 is BSC1 on GPIO2/3, as it always was.
+	if b.offset == 0 {
+		b.offset, b.sda, b.scl = BSC1_BASE, 2, 3
+	}
 
-	for _, pin := range []int{2, 3} { // SDA1, SCL1
+	b.base = PeripheralAddress(b.offset)
+
+	for _, pin := range []int{b.sda, b.scl} {
 		g, err := NewGPIO(pin)
 		if err != nil {
 			return err

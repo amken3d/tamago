@@ -75,6 +75,20 @@ func (gpio *GPIO) SelectFunction(n GPIOFunction) (err error) {
 		return fmt.Errorf("invalid GPIO function %d", n)
 	}
 
+	// One GPFSEL register holds ten pins, so this read-modify-write is shared
+	// state with every other line in the same group -- and the groups do not
+	// follow anything a caller would think of as a boundary. GPFSEL0 covers
+	// GPIO0 to GPIO9, which on a HAT means the ID EEPROM pins and whatever
+	// else landed in the low numbers.
+	//
+	// Without the lock, two lines being configured at once can interleave: the
+	// second read happens before the first write, and the first change is
+	// silently undone. What that looks like afterwards is a pin that reverted
+	// to its power-on function for no reason anybody can point at. PullUpDown
+	// has always taken this lock; this did not.
+	gpmu.Lock()
+	defer gpmu.Unlock()
+
 	register := PeripheralAddress(GPFSEL0 + 4*uint32(gpio.num/10))
 	shift := uint32((gpio.num % 10) * 3)
 	mask := uint32(0x7 << shift)
