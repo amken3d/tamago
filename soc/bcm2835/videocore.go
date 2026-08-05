@@ -162,6 +162,96 @@ func SetPowerState(deviceID uint32, on bool) (powered bool) {
 	return s&0x1 != 0 && s&0x2 == 0
 }
 
+// VC_GPIO_EXPANDER_BASE is the number the firmware gives the first expander pin.
+// Expander line n is addressed as VC_GPIO_EXPANDER_BASE+n; below the base these
+// tags address the SoC's own GPIOs, which the ARM can drive directly and should.
+const VC_GPIO_EXPANDER_BASE = 128
+
+// GPIO direction for SetGPIOConfig.
+const (
+	VC_GPIO_DIR_IN  = 0
+	VC_GPIO_DIR_OUT = 1
+)
+
+// SetGPIOState drives a firmware-owned GPIO, reporting whether the firmware
+// accepted the request.
+//
+// This exists for lines the ARM cannot reach. On boards where WL_REG_ON sits on
+// the expander, driving the SoC GPIO of the same number succeeds, changes
+// nothing, and leaves the wireless chip in reset -- with no error anywhere,
+// because nothing failed; the write simply went elsewhere.
+func SetGPIOState(gpio uint32, on bool) bool {
+	buf := make([]byte, VC_GPIO_SET_STATE_LEN)
+
+	var state uint32
+	if on {
+		state = 1
+	}
+	binary.LittleEndian.PutUint32(buf[0:], gpio)
+	binary.LittleEndian.PutUint32(buf[4:], state)
+
+	resp := exchangeSingleTagMessage(VC_GPIO_SET_STATE, buf)
+	if len(resp) < 8 {
+		return false
+	}
+
+	// The status comes back in the FIRST word, overwriting the gpio field -- not
+	// in the second, which still holds the state that was sent. Reading the wrong
+	// one reports every request as refused.
+	return binary.LittleEndian.Uint32(resp[0:]) == 0
+}
+
+// GPIOState reads a firmware-owned GPIO.
+func GPIOState(gpio uint32) (on bool, ok bool) {
+	buf := make([]byte, VC_GPIO_GET_STATE_LEN)
+	binary.LittleEndian.PutUint32(buf[0:], gpio)
+
+	resp := exchangeSingleTagMessage(VC_GPIO_GET_STATE, buf)
+	if len(resp) < 8 {
+		return false, false
+	}
+	if binary.LittleEndian.Uint32(resp[0:]) != 0 { // status word
+		return false, false
+	}
+
+	return binary.LittleEndian.Uint32(resp[4:]) != 0, true
+}
+
+// SetGPIOConfig configures a firmware-owned GPIO: direction, polarity,
+// termination and initial state. An expander line must be made an output before
+// SetGPIOState has any effect.
+func SetGPIOConfig(gpio, direction, polarity, termEnable, termPullUp, state uint32) bool {
+	buf := make([]byte, VC_GPIO_SET_CONFIG_LEN)
+
+	binary.LittleEndian.PutUint32(buf[0:], gpio)
+	binary.LittleEndian.PutUint32(buf[4:], direction)
+	binary.LittleEndian.PutUint32(buf[8:], polarity)
+	binary.LittleEndian.PutUint32(buf[12:], termEnable)
+	binary.LittleEndian.PutUint32(buf[16:], termPullUp)
+	binary.LittleEndian.PutUint32(buf[20:], state)
+
+	resp := exchangeSingleTagMessage(VC_GPIO_SET_CONFIG, buf)
+	if len(resp) < 8 {
+		return false
+	}
+
+	return binary.LittleEndian.Uint32(resp[0:]) == 0 // status word
+}
+
+// BoardRevision returns the board revision word, which encodes the model.
+//
+// FirmwareRevision above uses this same tag (VC_BOARD_GET_REV, 0x00010002)
+// despite its name -- the firmware revision is 0x00000001. This is the correctly
+// named accessor; the other is left as it is so nothing depending on it breaks.
+func BoardRevision() uint32 {
+	buf := exchangeSingleTagMessage(VC_BOARD_GET_REV, make([]byte, VC_BOARD_GET_REV_LEN))
+
+	if len(buf) < 4 {
+		return 0
+	}
+	return binary.LittleEndian.Uint32(buf)
+}
+
 func exchangeSingleTagMessage(code uint32, buf []byte) []byte {
 	msg := &MailboxMessage{
 		Tags: []MailboxTag{

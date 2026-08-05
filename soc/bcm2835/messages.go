@@ -64,6 +64,22 @@ const (
 	VC_POWER_SET_STATE     = 0x00028001
 	VC_POWER_SET_STATE_LEN = 8
 
+	// Firmware-owned GPIO. Some boards (Pi 3A+/3B+, Pi 4) put lines such as
+	// WL_REG_ON on a GPIO expander that the ARM cannot reach directly -- only
+	// the VideoCore firmware can drive them, through these tags. Expander pins
+	// are addressed from VC_GPIO_EXPANDER_BASE upwards.
+	VC_GPIO_GET_STATE     = 0x00030041
+	VC_GPIO_GET_STATE_LEN = 8
+
+	VC_GPIO_SET_STATE     = 0x00038041
+	VC_GPIO_SET_STATE_LEN = 8
+
+	VC_GPIO_GET_CONFIG     = 0x00030043
+	VC_GPIO_GET_CONFIG_LEN = 24
+
+	VC_GPIO_SET_CONFIG     = 0x00038043
+	VC_GPIO_SET_CONFIG_LEN = 24
+
 	VC_CLOCK_GET_STATE     = 0x00030001
 	VC_CLOCK_GET_STATE_LEN = 8
 
