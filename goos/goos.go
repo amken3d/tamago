@@ -122,4 +122,20 @@ var (
 	// defined as required to handle [Idle] implementations which halt a
 	// processor.
 	Wake func(procid uint64)
+
+	// PreemptM is an optional function which can be set to deliver an
+	// asynchronous preemption request (an inter-processor interrupt) to
+	// the processor identified by procid, as reported by [ProcID]. The
+	// receiving processor's interrupt handler is expected to notice the
+	// pending request (see [runtime.preemptM]) and bring the interrupted
+	// goroutine to a safe point. Leaving it unset keeps preemption
+	// cooperative-only, the single-processor behaviour.
+	PreemptM func(procid uint64)
+
+	// AsyncPreempt arms the trap-frame preemption tier: with it set, the
+	// interrupt handler redirects an interrupted goroutine through
+	// runtime.asyncPreempt at async-safe points, reaching even loops that
+	// make no calls. Leave unset until the platform's [PreemptM] delivery
+	// is proven; the cooperative poison tier works without it.
+	AsyncPreempt bool
 )
