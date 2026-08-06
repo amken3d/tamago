@@ -130,6 +130,9 @@ var (
 	// pending request (see [runtime.preemptM]) and bring the interrupted
 	// goroutine to a safe point. Leaving it unset keeps preemption
 	// cooperative-only, the single-processor behaviour.
+	//
+	// The implementation MUST be nosplit-safe: the runtime calls it from
+	// the interrupt handler's time-slice fan-out, on the exception stack.
 	PreemptM func(procid uint64)
 
 	// AsyncPreempt arms the trap-frame preemption tier: with it set, the
