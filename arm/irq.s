@@ -202,7 +202,10 @@ core0:
 	// fan-out the stop needs dies with it.
 	SUB	$8, R13, R13
 	CALL	runtime·tamagoIRQAck(SB)
-	MOVW	4(R13), R0
+	MOVBU	4(R13), R0		// bool: ONE byte -- a word load reads
+					// stack garbage above it (and did: the
+					// first boot tick "handled" itself into
+					// an interrupt storm)
 	ADD	$8, R13, R13
 	CMP	$0, R0
 	B.NE	c0pop
