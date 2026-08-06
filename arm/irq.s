@@ -195,6 +195,18 @@ core0:
 	// async tier, and a flag left set would silence future doorbells
 	CALL	runtime·tamagoPreemptAck(SB)
 
+	// let the platform ack self-contained sources (tick, doorbell) in
+	// place: if nothing is left pending, return with the mask untouched.
+	// The relay-and-mask model deadlocks a stopped world -- the service
+	// goroutine cannot run to unmask, the tick dies, and the time-slice
+	// fan-out the stop needs dies with it.
+	SUB	$8, R13, R13
+	CALL	runtime·tamagoIRQAck(SB)
+	MOVW	4(R13), R0
+	ADD	$8, R13, R13
+	CMP	$0, R0
+	B.NE	c0pop
+
 	SUB	$8, R13, R13
 	MOVW	$(const_IRQ_SIGNAL), R0
 	MOVW	R0, 4(R13)
@@ -206,6 +218,7 @@ core0:
 	ORR	$1<<7, R0			// mask IRQs
 	WORD	$0xe169f000			// msr SPSR, r0
 
+c0pop:
 	// restore caller registers
 	MOVM.IA.W	(R13), [R0-R12, R14]	// pop {r0-r12, r14}
 

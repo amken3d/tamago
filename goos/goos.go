@@ -156,6 +156,18 @@ var (
 	// MMIO poll-and-write, no allocation, no locks.
 	RawPutc func(c byte)
 
+	// IRQAck, when set, is called by the interrupt handler on the
+	// relay-model core before signalling the service goroutine: the
+	// platform acknowledges the sources it can handle entirely in place
+	// (a periodic tick, a wake doorbell) and returns true if NOTHING is
+	// left pending, in which case the handler returns with the interrupt
+	// mask untouched and the service goroutine is not involved. This
+	// keeps the tick -- and the time-slice fan-out riding it -- alive
+	// through a stopped world, when the service goroutine cannot run.
+	// Returning false takes the classic path: relay, and return masked
+	// until serviced. MUST be nosplit-safe.
+	IRQAck func() bool
+
 	// DeadmanHook, when set, is called at the end of the runtime deadman's
 	// dump so the platform can append its own evidence (exception
 	// breadcrumbs, interrupt counters, trapped console buffers). Same
