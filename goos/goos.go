@@ -138,4 +138,18 @@ var (
 	// make no calls. Leave unset until the platform's [PreemptM] delivery
 	// is proven; the cooperative poison tier works without it.
 	AsyncPreempt bool
+
+	// SchedTick, when set, points at a counter an ordinary goroutine
+	// advances continuously. It arms the runtime's interrupt-context
+	// deadman (see runtime.tamagoDeadmanCheck): interrupts keep firing
+	// when the scheduler wedges, so a long stretch of interrupts with no
+	// counter advance triggers a lock-free scheduler-state dump. A
+	// bring-up diagnostic; leave nil in normal operation.
+	SchedTick *uint32
+
+	// RawPutc, when set, writes one byte to the console bypassing every
+	// lock and buffer -- the deadman's output path, usable when any lock
+	// may be held by a dead core. It MUST be nosplit-safe: a frameless
+	// MMIO poll-and-write, no allocation, no locks.
+	RawPutc func(c byte)
 )
