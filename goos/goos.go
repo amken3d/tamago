@@ -150,6 +150,13 @@ var (
 	// bring-up diagnostic; leave nil in normal operation.
 	SchedTick *uint32
 
+	// RawTicks, when set, returns a free-running microsecond-class
+	// counter read with zero locks -- the deadman's clock, so its
+	// starvation window is measured in time rather than interrupt
+	// counts (which race ahead by orders of magnitude in an interrupt
+	// storm). Same contract as RawPutc: MUST be nosplit-safe.
+	RawTicks func() uint32
+
 	// RawPutc, when set, writes one byte to the console bypassing every
 	// lock and buffer -- the deadman's output path, usable when any lock
 	// may be held by a dead core. It MUST be nosplit-safe: a frameless
