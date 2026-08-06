@@ -126,24 +126,29 @@ poison:
 	// cooperative tier: folds into the next stack-growth check
 	CALL	runtime·tamagoPreempt(SB)
 
-	// async tier: complete the trap frame -- banked SP/LR and SPSR below
-	// the pushed registers -- and ask the runtime what to do with it
+	// async tier: ask first, build after. The check is cheap and almost
+	// always answers "leave the frame alone" (no pending request, tier
+	// not armed, wrong moment) -- the ordinary interrupt pays no frame
+	// capture at all, and consuming an unservable request there keeps
+	// preemptM's 0->1 delivery edge live.
+	SUB	$12, R13, R13
+	CALL	runtime·tamagoPreemptCheck(SB)
+	MOVW	4(R13), R1		// signal g (0: plain return)
+	MOVW	8(R13), R2		// its stack top
+	ADD	$12, R13, R13
+	CMP	$0, R1
+	B.EQ	secpop
+
+	// accepted: complete the trap frame -- banked SP/LR and SPSR below
+	// the pushed registers -- and run tamagoSigPreempt(frame, gp) on the
+	// signal stack, the same move a Unix signal makes. Nothing survives
+	// a Go call in registers, so the IRQ stack pointer and the
+	// interrupted g ride in the callee frame.
 	WORD	$0xe14f0000		// mrs r0, SPSR
 	MOVW.W	R0, -4(R13)		// push spsr
 	SUB	$8, R13, R13
 	WORD	$0xe8cd6000		// stm sp, {sp, lr}^ (banked SP/LR)
 
-	SUB	$12, R13, R13
-	CALL	runtime·tamagoPreemptCheck(SB)
-	MOVW	4(R13), R1		// signal g (0: leave the frame alone)
-	MOVW	8(R13), R2		// its stack top
-	ADD	$12, R13, R13
-	CMP	$0, R1
-	B.EQ	secdone
-
-	// run tamagoSigPreempt(frame, gp) on the signal stack -- the same
-	// move a Unix signal makes. Nothing survives a Go call in registers,
-	// so the IRQ stack pointer and the interrupted g ride in the frame.
 	MOVW	R13, R4			// frame
 	MOVW	g, R5			// interrupted g
 	MOVW	R13, R6			// IRQ stack
@@ -159,14 +164,15 @@ poison:
 	MOVW	16(R13), g
 	MOVW	12(R13), R13
 
-secdone:
 	// honor the (possibly rewritten) frame: banked SP/LR, the original
-	// SPSR -- no re-masking, the next IPI must land -- then the registers,
-	// with the frame's pc arriving in R14
+	// SPSR -- no re-masking, the next IPI must land -- then fall through
+	// to the register pop, the frame's pc arriving in R14
 	WORD	$0xe8dd6000		// ldm sp, {sp, lr}^ (banked SP/LR)
 	ADD	$8, R13, R13
 	MOVW.P	4(R13), R0		// pop spsr
 	WORD	$0xe169f000		// msr SPSR, r0
+
+secpop:
 	MOVM.IA.W	(R13), [R0-R12, R14]	// pop {r0-r12, r14}
 	MOVW.S	R14, R15
 
@@ -174,6 +180,10 @@ core0:
 	// request cooperative preemption of the interrupted goroutine (g register
 	// R10 still holds it here); folds into its next stack-growth check.
 	CALL	runtime·tamagoPreempt(SB)
+
+	// consume any pending preemptM request: this path never runs the
+	// async tier, and a flag left set would silence future doorbells
+	CALL	runtime·tamagoPreemptAck(SB)
 
 	SUB	$8, R13, R13
 	MOVW	$(const_IRQ_SIGNAL), R0
