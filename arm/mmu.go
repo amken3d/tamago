@@ -35,7 +35,21 @@ const (
 	TTE_SUPERSECTION  uint32 = (1 << 18) | (1 << 1)
 	TTE_NS            uint32 = (1 << 19)
 
-	MemoryRegion = TTE_AP_001<<10 | TTE_CACHEABLE | TTE_BUFFERABLE | TTE_SECTION
+	// TTE_SHAREABLE (S, bit 16 on sections, bit 10 on small pages) marks
+	// normal memory as shareable. This is not an optimization flag: on a
+	// multiprocessor both cache coherency management AND the global
+	// exclusive monitor -- what makes LDREX/STREX (every Go atomic and
+	// runtime lock) actually exclude between cores -- apply only to
+	// shareable regions. Without it a second core's locks silently do not
+	// lock, and shared structures corrupt at random (first observed as
+	// runtime timer-heap corruption). Requires the SMP/coherency enable
+	// in CPUECTLR/ACTLR, which the BCM2710 firmware sets; on cores where
+	// it is off, shareable normal memory may instead be treated as
+	// uncached.
+	TTE_SHAREABLE       uint32 = (1 << 16)
+	TTE_SMALL_SHAREABLE uint32 = (1 << 10)
+
+	MemoryRegion = TTE_AP_001<<10 | TTE_CACHEABLE | TTE_BUFFERABLE | TTE_SECTION | TTE_SHAREABLE
 	DeviceRegion = TTE_AP_001<<10 | TTE_SECTION
 )
 
@@ -96,7 +110,7 @@ func (cpu *CPU) initL2Table(entry int, base uint32, section uint32) {
 	ramStart, ramEnd := runtime.MemRegion()
 	_, textEnd := runtime.TextRegion()
 
-	memoryRegion := TTE_AP_001<<4 | TTE_CACHEABLE | TTE_BUFFERABLE | TTE_SECTION
+	memoryRegion := TTE_AP_001<<4 | TTE_CACHEABLE | TTE_BUFFERABLE | TTE_SECTION | TTE_SMALL_SHAREABLE
 	deviceRegion := TTE_AP_001<<4 | TTE_SECTION
 
 	for i := uint32(entry); i < l2pageTableSize; i++ {
