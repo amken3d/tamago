@@ -123,6 +123,16 @@ mbox:
 	MOVW	R4, (R3)
 
 poison:
+	// per-core IRQ-entry counter at 0xb1c0+4*core: from another core this
+	// distinguishes an interrupt storm (huge) from a core that stopped
+	// taking interrupts at all (frozen) -- the two silent failure modes
+	// bring-up keeps meeting. R0 still holds the core number here.
+	MOVW	$0xb1c0, R1
+	ADD	R0<<2, R1, R1
+	MOVW	(R1), R3
+	ADD	$1, R3, R3
+	MOVW	R3, (R1)
+
 	// cooperative tier: folds into the next stack-growth check
 	CALL	runtime·tamagoPreempt(SB)
 
@@ -201,3 +211,10 @@ core0:
 
 	// restore PC from LR and mode
 	MOVW.S	R14, R15
+
+// func read_mpidr() uint32
+TEXT ·read_mpidr(SB),$0-4
+	MRC	15, 0, R0, C0, C0, 5	// MPIDR
+	MOVW	R0, ret+0(FP)
+
+	RET

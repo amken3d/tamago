@@ -123,7 +123,32 @@ func wnr(dfsr uint32) string {
 // CPU.Init()).
 var SystemExceptionHandler = DefaultExceptionHandler
 
+// Per-core exception breadcrumbs, written BEFORE any handler runs: an
+// exception on a secondary core can spiral or wedge before its report
+// reaches the console (printing takes locks and a buffered console may
+// never flush), so the bare facts -- count, vector, fault address, mode --
+// go to fixed scratch words a diagnostic on another core can read.
+// 4 words per core at excScratch + 16*core: count, vector, addr, cpsr.
+const excScratch = 0xb180
+
+func read_mpidr() uint32
+
 func systemException(off int) {
+	core := uintptr(read_mpidr() & 3)
+	b := excScratch + 16*core
+	*(*uint32)(unsafe.Pointer(b)) += 1
+	*(*uint32)(unsafe.Pointer(b + 4)) = uint32(off)
+
+	var addr uint32
+	switch off {
+	case DATA_ABORT:
+		addr = read_dfar()
+	case PREFETCH_ABORT:
+		addr = read_ifar()
+	}
+	*(*uint32)(unsafe.Pointer(b + 8)) = addr
+	*(*uint32)(unsafe.Pointer(b + 12)) = read_cpsr()
+
 	SystemExceptionHandler(off)
 }
 

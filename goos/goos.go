@@ -152,4 +152,10 @@ var (
 	// may be held by a dead core. It MUST be nosplit-safe: a frameless
 	// MMIO poll-and-write, no allocation, no locks.
 	RawPutc func(c byte)
+
+	// DeadmanHook, when set, is called at the end of the runtime deadman's
+	// dump so the platform can append its own evidence (exception
+	// breadcrumbs, interrupt counters, trapped console buffers). Same
+	// contract as RawPutc: nosplit-safe, no locks, no allocation.
+	DeadmanHook func()
 )
