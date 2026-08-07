@@ -180,4 +180,20 @@ var (
 	// breadcrumbs, interrupt counters, trapped console buffers). Same
 	// contract as RawPutc: nosplit-safe, no locks, no allocation.
 	DeadmanHook func()
+
+	// Write, when set, replaces per-byte [Printk] for console output:
+	// the runtime delivers each write(2) payload whole. A multiprocessor
+	// platform can then serialize the console at write granularity --
+	// whole fmt.Printf payloads stay contiguous under a lock no matter
+	// which processor carries the writing goroutine -- where byte
+	// granularity would interleave concurrent writers mid-line. Output
+	// printed before the platform assigns the variable still arrives
+	// through [Printk] one byte at a time.
+	//
+	// The runtime calls it from nosplit context, on arbitrary
+	// processors, and during panic: it must not allocate, must not
+	// depend on the scheduler, and must tolerate concurrent callers.
+	// p aliases runtime stack memory and MUST NOT be retained after
+	// the call returns.
+	Write func(p []byte)
 )
