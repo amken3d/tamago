@@ -65,6 +65,27 @@ func init() {
 type MailboxTag struct {
 	ID     uint32
 	Buffer []byte
+
+	// Code is the tag's request/response word as the firmware left it. On the
+	// way out it is zero; on the way back the firmware sets bit 31 and puts the
+	// length it actually wrote in the low bits.
+	//
+	// It matters because a tag the firmware does not implement is left ALONE:
+	// the message still reports overall success, and the tag's buffer still
+	// holds whatever was in the shared region -- the request that was written
+	// there, or bytes left by a previous mailbox transaction, since the region
+	// is reserved and released per call. A caller that reads such a buffer
+	// decodes stale memory as a reading. See Responded.
+	Code uint32
+}
+
+// Responded reports whether the firmware actually wrote this tag's buffer.
+//
+// Always check it before trusting a "get" tag's contents. Zero would be a safe
+// value to read from an unanswered tag; garbage that decodes to a plausible
+// number is not, and that is what an unanswered tag contains.
+func (t *MailboxTag) Responded() bool {
+	return t.Code&0x80000000 != 0
 }
 
 type MailboxMessage struct {
@@ -169,6 +190,8 @@ func (mb *mailbox) Call(channel int, message *MailboxMessage) {
 		if len > uint32(size-offset) {
 			panic("malformed mailbox response, over-sized tag")
 		}
+
+		tag.Code = binary.LittleEndian.Uint32(buf[offset+8:])
 
 		tag.Buffer = make([]byte, len)
 		copy(tag.Buffer, buf[offset+12:])

@@ -56,7 +56,7 @@ func temperatureTag(code, length uint32) uint32 {
 	buf := make([]byte, length)
 	binary.LittleEndian.PutUint32(buf[0:], 0) // sensor id; only 0 exists
 
-	resp := exchangeSingleTagMessage(code, buf)
+	resp := exchangeSingleTagMessageChecked(code, buf)
 	if len(resp) < 8 {
 		return 0
 	}
@@ -74,7 +74,7 @@ func ClockRate(clockID uint32) uint32 {
 	buf := make([]byte, VC_CLOCK_GET_RATE_LEN)
 	binary.LittleEndian.PutUint32(buf[0:], clockID)
 
-	resp := exchangeSingleTagMessage(VC_CLOCK_GET_RATE, buf)
+	resp := exchangeSingleTagMessageChecked(VC_CLOCK_GET_RATE, buf)
 	if len(resp) < 8 {
 		return 0
 	}
@@ -92,18 +92,32 @@ func Voltage(domainID uint32) int32 {
 	buf := make([]byte, VC_VOLT_GET_LEN)
 	binary.LittleEndian.PutUint32(buf[0:], domainID)
 
-	resp := exchangeSingleTagMessage(VC_VOLT_GET, buf)
+	resp := exchangeSingleTagMessageChecked(VC_VOLT_GET, buf)
 	if len(resp) < 8 {
 		return 0
 	}
 
-	off := int32(binary.LittleEndian.Uint32(resp[4:]))
+	raw := binary.LittleEndian.Uint32(resp[4:])
 
 	// 0x80000000 and 0 are the firmware's "not supported" answers, and both
 	// would otherwise decode to a plausible-looking voltage.
-	if off == 0 || uint32(off) == 0x80000000 {
+	if raw == 0 || raw == 0x80000000 {
 		return 0
 	}
 
-	return 1200000 + off*2500
+	// int64 for the arithmetic: the offset is a signed 32-bit word and
+	// multiplying it by 2500 in int32 overflows for all but a narrow band
+	// around zero, which turns an unexpected value into a confident absurdity
+	// rather than an obvious one.
+	uv := 1200000 + int64(int32(raw))*2500
+
+	// Reject anything the part cannot actually be running at. This SoC's core
+	// rail lives near 1.2V and is adjustable over a small range; a reading
+	// outside this band did not come from the sensor, whatever set the response
+	// bit, and reporting nothing is better than reporting it.
+	if uv < 500000 || uv > 2000000 {
+		return 0
+	}
+
+	return int32(uv)
 }

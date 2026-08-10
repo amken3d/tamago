@@ -252,6 +252,40 @@ func BoardRevision() uint32 {
 	return binary.LittleEndian.Uint32(buf)
 }
 
+// exchangeSingleTagMessageChecked is exchangeSingleTagMessage that returns
+// nothing unless the firmware actually answered.
+//
+// The unchecked version is left as it is because everything that boots this SoC
+// goes through it and its callers have been proven against real firmware. New
+// readings should use this one: an unimplemented tag comes back with its buffer
+// untouched, which is not zero but whatever the shared region last held, and
+// silently decoding that produces a confident wrong number rather than a
+// missing one. (Observed: a core-voltage read that came back as -1293.767 V.)
+func exchangeSingleTagMessageChecked(code uint32, buf []byte) []byte {
+	msg := &MailboxMessage{
+		Tags: []MailboxTag{
+			{
+				ID:     code,
+				Buffer: buf,
+			},
+		},
+	}
+
+	Mailbox.Call(VC_CH_PROPERTYTAGS_A_TO_VC, msg)
+
+	if msg.Error() {
+		return nil
+	}
+
+	tag := msg.Tag(code)
+
+	if tag == nil || !tag.Responded() {
+		return nil
+	}
+
+	return tag.Buffer
+}
+
 func exchangeSingleTagMessage(code uint32, buf []byte) []byte {
 	msg := &MailboxMessage{
 		Tags: []MailboxTag{
