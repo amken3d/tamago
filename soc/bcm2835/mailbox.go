@@ -16,6 +16,7 @@ import (
 	"fmt"
 	"runtime"
 	"sync"
+	"time"
 
 	"github.com/usbarmory/tamago/dma"
 	"github.com/usbarmory/tamago/internal/reg"
@@ -202,6 +203,38 @@ func (mb *mailbox) Call(channel int, message *MailboxMessage) {
 	}
 }
 
+// mailboxTimeout bounds each half of an exchange.
+//
+// The VideoCore answers a property request in microseconds, so this is four
+// orders of magnitude of headroom and can only expire if the firmware is not
+// going to answer at all.
+//
+// It exists because the wait used to be unbounded, and Call holds a package-wide
+// mutex across the whole transaction -- one that the USB power path, the SD
+// power path and the framebuffer all take. So a firmware that never answered
+// did not fail one reading; it held that lock forever and took every future
+// caller down with it, silently. An unbounded wait on another processor, under
+// a shared lock, is a deadlock waiting for an excuse.
+const mailboxTimeout = 1 * time.Second
+
+// mailboxWait spins until the given status bit clears, or the timeout expires.
+// Returns false if it expired.
+func mailboxWait(bit uint32) bool {
+	deadline := read_systimer() + int64(mailboxTimeout/time.Microsecond)
+
+	for (reg.Read(peripheralBase+MAILBOX_STATUS_REG) & bit) != 0 {
+		if read_systimer() > deadline {
+			print("bcm2835: mailbox timed out waiting for the VideoCore; reading abandoned\n")
+
+			return false
+		}
+
+		runtime.Gosched()
+	}
+
+	return true
+}
+
 func (mb *mailbox) exchangeMessage(channel int, addr uint32) {
 	if (addr & 0xF) != 0 {
 		panic("Mailbox message must be 16-byte aligned")
@@ -211,16 +244,16 @@ func (mb *mailbox) exchangeMessage(channel int, addr uint32) {
 	// transaction (buffer, cache flushes, exchange, parse).
 
 	// Wait for space to send
-	for (reg.Read(peripheralBase+MAILBOX_STATUS_REG) & MAILBOX_FULL) != 0 {
-		runtime.Gosched()
+	if !mailboxWait(MAILBOX_FULL) {
+		return
 	}
 
 	// Send
 	reg.Write(peripheralBase+MAILBOX_WRITE_REG, uint32(channel&0xF)|uint32(addr&0xFFFFFFF0))
 
 	// Wait for response
-	for (reg.Read(peripheralBase+MAILBOX_STATUS_REG) & MAILBOX_EMPTY) != 0 {
-		runtime.Gosched()
+	if !mailboxWait(MAILBOX_EMPTY) {
+		return
 	}
 
 	// Read response
