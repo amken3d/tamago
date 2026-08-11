@@ -24,11 +24,15 @@ import (
 	"github.com/usbarmory/tamago/arm64"
 
 	"github.com/usbarmory/tamago/soc/microchip/analyzer"
+	"github.com/usbarmory/tamago/soc/microchip/fan"
 	"github.com/usbarmory/tamago/soc/microchip/flexcom"
 	"github.com/usbarmory/tamago/soc/microchip/gpio"
 	"github.com/usbarmory/tamago/soc/microchip/miim"
 	"github.com/usbarmory/tamago/soc/microchip/otpc"
+	"github.com/usbarmory/tamago/soc/microchip/sgpio"
+	"github.com/usbarmory/tamago/soc/microchip/temp"
 	"github.com/usbarmory/tamago/soc/microchip/trng"
+	"github.com/usbarmory/tamago/soc/microchip/wdt"
 )
 
 // Ports defines the number of available Ethernet ports
@@ -78,13 +82,17 @@ const (
 	EACL_BASE = 0xe22c0000
 
 	// Serial ports
-	FLEXCOM0_BASE = 0xe0040000
-	FLEXCOM1_BASE = 0xe0044000
-	FLEXCOM2_BASE = 0xe0060000
-	FLEXCOM3_BASE = 0xe0064000
+	FLEXCOM0_BASE    = 0xe0040000
+	FLEXCOM1_BASE    = 0xe0044000
+	FLEXCOM2_BASE    = 0xe0060000
+	FLEXCOM3_BASE    = 0xe0064000
+	FLEXCOM3_GCK_CFG = CPU_BASE + 0xd8
 
 	// General Configuration Block
 	GCB_BASE = 0xe2010000
+
+	// Fan controller
+	FAN_BASE = GCB_BASE + 0x348
 
 	// General Interrupt Controller
 	GIC_BASE = 0xe8c10000
@@ -120,6 +128,12 @@ const (
 	// Rewriter
 	REW_BASE = 0xe2600000
 
+	// Serial GPIO controller
+	SGPIO_BASE = GCB_BASE + 0x230
+
+	// Temperature sensor control
+	TEMP_SENSOR_BASE = 0xe2020100
+
 	// True Random Number Generator
 	TRNG_BASE = 0xe0048000
 
@@ -128,6 +142,9 @@ const (
 
 	// Versatile OAM MEP Processor (VOP) block
 	VOP_BASE = 0xe2a00000
+
+	// Watchdog Timer
+	WDT_BASE = 0xe0090000
 )
 
 // Peripheral instances
@@ -144,11 +161,17 @@ var (
 		TimerOffset: 1,
 	}
 
+	// Fan controller
+	FAN = &fan.FAN{
+		Base: FAN_BASE,
+	}
+
 	// Serial port 1
 	FLEXCOM0 = &flexcom.FLEXCOM{
 		Index: 1,
 		Base:  FLEXCOM0_BASE,
 		IRQ:   FLEXCOM0_IRQ,
+		USART: &flexcom.USART{},
 	}
 
 	// Serial port 2
@@ -198,8 +221,23 @@ var (
 		Size: 16 * 1024,
 	}
 
+	// Serial GPIO controller
+	SGPIO = &sgpio.SGPIO{
+		Base: SGPIO_BASE,
+	}
+
+	// Temperature sensor
+	TEMP = &temp.SENSOR{
+		Base: TEMP_SENSOR_BASE,
+	}
+
 	// True Random Number Generator
 	TRNG = &trng.TRNG{
 		Base: TRNG_BASE,
+	}
+
+	// Watchdog Timer
+	WDT = &wdt.WDT{
+		Base: WDT_BASE,
 	}
 )

@@ -60,7 +60,7 @@ type UART struct {
 // Init configures the UART for 8N1 operation at the divisor set in Baud.
 func (hw *UART) Init() {
 	if hw.Base == 0 {
-		panic("invalid UART instance")
+		panic("invalid UART controller instance")
 	}
 
 	// 8-bit word length, no parity, 1 stop bit
@@ -84,7 +84,7 @@ func (hw *UART) Tx(c byte) {
 
 // Write data from buffer to serial port.
 func (hw *UART) Write(buf []byte) (n int, _ error) {
-	for _, c = range buf {
+	for _, c := range buf {
 		hw.Tx(c)
 	}
 

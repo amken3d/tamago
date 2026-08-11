@@ -40,10 +40,10 @@ const (
 var (
 	// RISC-V core
 	RV64 = &riscv64.CPU{
-		Counter:         Counter,
-		TimerMultiplier: 1,
+		Counter: Counter,
 		// required before Init()
-		TimerOffset: 1,
+		TimerMultiplier: 1,
+		TimerOffset:     1,
 	}
 
 	// Core-Local Interruptor

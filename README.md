@@ -11,7 +11,7 @@ Introduction
 ============
 
 TamaGo is a framework that enables compilation and execution of unencumbered Go
-applications on bare metal processors (AMD64, ARM, ARM64, RISCV64).
+applications on bare metal processors.
 
 The projects spawns from the desire of reducing the attack surface of embedded
 systems firmware by removing any runtime dependency on C code and Operating
@@ -111,11 +111,23 @@ Supported RISC-V targets
 The following table summarizes currently supported RISC-V SoCs and boards
 (`GOOS=tamago GOARCH=riscv64`).
 
-| SoC                 | Board                                                                         | SoC package                                                                    | Board package                                                                            |
-|---------------------|-------------------------------------------------------------------------------|--------------------------------------------------------------------------------|------------------------------------------------------------------------------------------|
-| SiFive FU540        | [QEMU sifive_u](https://www.qemu.org/docs/master/system/riscv/sifive_u.html)  | [fu540](https://github.com/usbarmory/tamago/tree/master/soc/sifive/fu540)      | [qemu/sifive_u](https://github.com/usbarmory/tamago/tree/master/board/qemu/sifive_u)     |
-| AI Foundry Erbium   | [erbium_emu](https://github.com/aifoundry-org/et-platform)                    | [erbium](https://github.com/usbarmory/tamago/tree/master/soc/aifoundry/erbium) | [erbium_emu](https://github.com/usbarmory/tamago/tree/master/board/aifoundry/erbium_emu) |
-| AI Foundry ET-SoC-1 | [sys_emu](https://github.com/aifoundry-org/et-platform/tree/master/sw-sysemu) | [etsoc1](https://github.com/usbarmory/tamago/tree/master/soc/aifoundry/etsoc1) | [sys_emu](https://github.com/usbarmory/tamago/tree/master/board/aifoundry/sys_emu)       |
+| SoC                 | Board                                                                         | SoC package                                                                       | Board package                                                                            |
+|---------------------|-------------------------------------------------------------------------------|-----------------------------------------------------------------------------------|------------------------------------------------------------------------------------------|
+| AI Foundry Erbium   | [erbium_emu](https://github.com/aifoundry-org/et-platform)                    | [erbium](https://github.com/usbarmory/tamago/tree/master/soc/aifoundry/erbium)    | [erbium_emu](https://github.com/usbarmory/tamago/tree/master/board/aifoundry/erbium_emu) |
+| AI Foundry ET-SoC-1 | [sys_emu](https://github.com/aifoundry-org/et-platform/tree/master/sw-sysemu) | [etsoc1](https://github.com/usbarmory/tamago/tree/master/soc/aifoundry/etsoc1)    | [sys_emu](https://github.com/usbarmory/tamago/tree/master/board/aifoundry/sys_emu)       |
+| Fisilink FSL91030   | [MilkV Vega](https://milkv.io/vega)                                           | [fsl91030](https://github.com/usbarmory/tamago/tree/master/soc/fisilink/fsl91030) | [vega](https://github.com/usbarmory/tamago/tree/master/board/milkv/vega)                 |
+| Fisilink FSL91030   | [Nuclei QEMU](https://doc.nucleisys.com/nuclei_tools/qemu/index.html)         | [fsl91030](https://github.com/usbarmory/tamago/tree/master/soc/fisilink/fsl91030) | [eval_soc](https://github.com/usbarmory/tamago/tree/master/board/nuclei/eval_soc)        |
+| SiFive FU540        | [QEMU sifive_u](https://www.qemu.org/docs/master/system/riscv/sifive_u.html)  | [fu540](https://github.com/usbarmory/tamago/tree/master/soc/sifive/fu540)         | [qemu/sifive_u](https://github.com/usbarmory/tamago/tree/master/board/qemu/sifive_u)     |
+
+Supported LoongArch targets
+===========================
+
+The following table summarizes currently supported LoongArch SoCs and boards
+(`GOOS=tamago GOARCH=loong64`).
+
+| SoC             | Board                                                                    | SoC package                                                                       | Board package                                                                |
+|-----------------|--------------------------------------------------------------------------|-----------------------------------------------------------------------------------|------------------------------------------------------------------------------|
+| Loongson 3A5000 | [QEMU virt](https://www.qemu.org/docs/master/system/loongarch/virt.html) | [ls3a5000](https://github.com/usbarmory/tamago/tree/master/soc/loongson/ls3a5000) | [qemu/virt](https://github.com/usbarmory/tamago/tree/master/board/qemu/virt) |
 
 Userspace targets
 =================
@@ -220,6 +232,9 @@ GOOS=tamago GOARCH=riscv64 ${TAMAGO} build -ldflags "-T 0x80010000 -R 0x1000" ma
 
 # Example for AI Foundry Erbium
 GOOS=tamago GOARCH=riscv64 GOSOFT=1 ${TAMAGO} build -ldflags "-T 0x40010000 -R 0x1000" main.go
+
+# Example for QEMU LoongArch virt
+GOOS=tamago GOARCH=loong64 ${TAMAGO} build -ldflags "-T 0x1000000 -R 0x1000" main.go
 
 # Example for Linux userspace
 GOOS=tamago ${TAMAGO} build main.go

@@ -9,21 +9,38 @@
 package lan9696evb
 
 import (
+	"fmt"
+	"time"
+
 	"github.com/usbarmory/tamago/bits"
 	"github.com/usbarmory/tamago/internal/reg"
+	"github.com/usbarmory/tamago/phy/microchip/lan8840"
 	"github.com/usbarmory/tamago/soc/microchip/devcpu"
 	"github.com/usbarmory/tamago/soc/microchip/lan969x"
-	"github.com/usbarmory/tamago/soc/microchip/miim"
 )
 
-const MAC_FID = 1
+const (
+	PHY_ADDR            = 0x03
+	MAC_FID             = 1
+	ManagementPortIndex = PORT29
+)
+
+var (
+	// LinkTimeout represents the timeout for management port link
+	// establishment.
+	LinkTimeout = 10 * time.Second
+
+	// LinkPollInterval represents the grace time between management port
+	// link establishment attempts.
+	LinkPollInterval = 10 * time.Millisecond
+)
 
 // On the LAN969x 24-port EVB the management network interface is port D29,
 // connected through DEV_RGMII1 with a Microchip LAN8840 PHY.
 //
 // CPU port 0 (D30) is used for injection and extraction of frames.
 var ManagementPort = &devcpu.Port{
-	Index:    29,
+	Index:    PORT29,
 	IRQ:      lan969x.XTR_READY_IRQ,
 	Queue:    lan969x.DEVCPU_QS,
 	Analyzer: lan969x.ANA,
@@ -31,42 +48,120 @@ var ManagementPort = &devcpu.Port{
 	FID:      MAC_FID,
 }
 
-func enablePort() (err error) {
-	// init LAN8840 PHY
-	initPHY(lan969x.MIIM0)
+func initGPIO(num, fn int) {
+	pin, err := lan969x.GPIO.Init(num)
 
-	// init MAC controller
-	initRGMII()
+	if err != nil {
+		return
+	}
 
-	// init VLAN on physical and CPU port
-	initVLAN(PORT29)
-	initVLAN(PORT30)
-
-	// init capture on CPU port 0 (D30)
-	initCapture(PORT_CFG30)
-
-	return nil
+	pin.Function(fn)
 }
 
-func initPHY(miim *miim.MIIM) {
+func resetInjectionFlowControl(port uint32) {
+	reg.Set(DEV_TX_STOP_WM_CFG+port*4, DEV_TX_CNT_CLR)
+}
+
+func waitManagementLink(phy *lan8840.PHY) (status lan8840.Status, err error) {
+	deadline := time.Now().Add(LinkTimeout)
+
+	for {
+		if status, err = phy.Status(); err != nil {
+			return
+		}
+
+		if status.Link && status.AutoNegotiationComplete {
+			break
+		}
+
+		if time.Now().After(deadline) {
+			return status, fmt.Errorf("timed out waiting for management PHY link")
+		}
+
+		time.Sleep(LinkPollInterval)
+	}
+
+	switch {
+	case status.Speed == 10:
+		return status, fmt.Errorf("unsupported 10 Mbps management link")
+	case !status.FullDuplex:
+		return status, fmt.Errorf("unsupported half-duplex management link")
+	case status.Speed != 100 && status.Speed != 1000:
+		return status, fmt.Errorf("management PHY has no common advertised mode")
+	}
+
+	return
+}
+
+func enablePort() (err error) {
 	// Table 2-7: GPIO alternate function assignments
 	//
 	// GPIO_9:  ALT1 - MIIM0_MDC
 	// GPIO_10: ALT1 - MIIM0_MDIO
-	lan969x.GPIO.Function(9, 1)
-	lan969x.GPIO.Function(10, 1)
+	initGPIO(9, 1)
+	initGPIO(10, 1)
 
-	// software reset
-	miim.WritePHYRegister(PHY_ADDR, PHY_CTRL, (1 << CTRL_RESET))
-	// 1000 Mbps, Auto-Negotiation, Full-duplex
-	miim.WritePHYRegister(PHY_ADDR, PHY_CTRL, (0b1<<CTRL_SPEED1)|(1<<CTRL_ANEG)|(1<<CTRL_DUPLEX))
+	phy := &lan8840.PHY{}
+	miim := lan969x.MIIM0
+
+	if err = miim.Init(); err != nil {
+		return
+	}
+
+	// initialize LAN8840 PHY
+	if err = phy.Init(PHY_ADDR, miim); err != nil {
+		return
+	}
+
+	if err = phy.Reset(); err != nil {
+		return
+	}
+
+	if err = phy.Negotiate(); err != nil {
+		return
+	}
+
+	status, err := waitManagementLink(phy)
+	if err != nil {
+		return err
+	}
+
+	// initialize MAC controller
+	if err = initRGMII(status.Speed); err != nil {
+		return
+	}
+
+	// initialize VLAN on physical and CPU port
+	initVLAN(PORT29)
+	initVLAN(PORT30)
+
+	// initialize capture on CPU port 0 (D30)
+	initCapture(PORT_CFG30)
+
+	// reset injection flow control
+	resetInjectionFlowControl(PORT29)
+
+	return nil
 }
 
-func initRGMII() {
+func initRGMII(speed int) (err error) {
 	var val uint32
+	var txClock uint32
+	var macSpeed uint32
 
-	// take RGMII out of reset and set speed to 1G
-	bits.SetN(&val, TX_CLK_CFG, 0b111, 1)
+	switch speed {
+	case 100:
+		txClock = 2
+		macSpeed = SPEED_100M
+	case 1000:
+		txClock = 1
+		macSpeed = SPEED_1G
+	default:
+		return fmt.Errorf("invalid management link speed (%d)", speed)
+	}
+
+	// take RGMII out of reset and match the negotiated link speed
+	bits.SetN(&val, TX_CLK_CFG, 0b111, txClock)
 	bits.Clear(&val, RGMII_TX_RST)
 	bits.Clear(&val, RGMII_RX_RST)
 	reg.Write(XMIICFG1+RGMII_CFG, val)
@@ -100,12 +195,14 @@ func initRGMII() {
 	reg.SetN(DEVRGMII1+MAC_IFG_CFG, RX_IFG2, 0x0f, 1) // rx inter frame gap (second part)
 	reg.SetN(DEVRGMII1+MAC_IFG_CFG, RX_IFG1, 0x0f, 5) // rx inter frame gap (first part)
 
-	// set 1000Mbps speed
-	reg.SetN(DEVRGMII1+DEV_RST_CTRL, SPEED_SEL, 0b111, SPEED_1G)
+	// set MAC speed
+	reg.SetN(DEVRGMII1+DEV_RST_CTRL, SPEED_SEL, 0b111, macSpeed)
 
 	// clear reset from clock domains
 	reg.Clear(DEVRGMII1+DEV_RST_CTRL, MAC_TX_RST)
 	reg.Clear(DEVRGMII1+DEV_RST_CTRL, MAC_RX_RST)
+
+	return
 }
 
 func initVLAN(port uint32) {

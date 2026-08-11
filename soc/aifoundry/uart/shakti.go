@@ -1,7 +1,7 @@
 // CORE-ET Silicom Platform Universal Asynchronous Receiver/Transmitter (UART) drivers
 // https://github.com/usbarmory/tamago
 //
-// Copyright (c) The kotama Authors. All Rights Reserved.
+// Copyright (c) The TamaGo Authors. All Rights Reserved.
 //
 // Use of this source code is governed by the license
 // that can be found in the LICENSE file.
@@ -78,18 +78,18 @@ func (hw *Shakti) Rx() (c byte, valid bool) {
 
 // Write data from buffer to serial port.
 func (hw *Shakti) Write(buf []byte) (n int, _ error) {
-	for n = range buf {
-		hw.Tx(buf[n])
+	for _, c := range buf {
+		hw.Tx(c)
 	}
 
-	return
+	return len(buf), nil
 }
 
 // Read available data to buffer from serial port.
 func (hw *Shakti) Read(buf []byte) (n int, _ error) {
 	var valid bool
 
-	for n = range buf {
+	for n < len(buf) {
 		buf[n], valid = hw.Rx()
 
 		if !valid {
@@ -99,6 +99,8 @@ func (hw *Shakti) Read(buf []byte) (n int, _ error) {
 
 			break
 		}
+
+		n++
 	}
 
 	return

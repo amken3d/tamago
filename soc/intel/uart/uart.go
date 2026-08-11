@@ -23,11 +23,12 @@ import (
 
 // UART registers
 const (
-	DEFAULT_BAUDRATE = 115200
-
 	RBR = 0x00
 	THR = 0x00
-	IER = 0x01
+
+	IER       = 0x01
+	IER_ERBFI = 0
+
 	FCR = 0x02
 	LCR = 0x03
 
@@ -49,11 +50,15 @@ type UART struct {
 	Index int
 	// Base register
 	Base uint16
+	// Interrupt ID
+	IRQ int
 
 	// Data Terminal Ready
 	DTR bool
 	// Request To Send
 	RTS bool
+
+	rx chan bool
 }
 
 // Init initializes and enables the UART.
@@ -75,6 +80,20 @@ func (hw *UART) Init() {
 	reg.Out8(hw.Base+MCR, mcr)
 }
 
+// EnableInterrupt enables interrupt generation for receive FIFOs. Once enabled
+// [UART.Read] and [UART.Rx] block, as required, on the argument channel rather
+// than polling for valid data. A nil channel disables receive interrupts and
+// restores polling.
+func (hw *UART) EnableInterrupt(rx chan bool) {
+	if rx == nil {
+		reg.Out8(hw.Base+IER, 0)
+	} else {
+		reg.Out8(hw.Base+IER, 1<<IER_ERBFI)
+	}
+
+	hw.rx = rx
+}
+
 // Tx transmits a single character to the serial port.
 func (hw *UART) Tx(c byte) {
 	for reg.In8(hw.Base+LSR)&(1<<LSR_THRE) == 0 {
@@ -85,12 +104,22 @@ func (hw *UART) Tx(c byte) {
 }
 
 // Rx receives a single character from the serial port.
-func (hw *UART) Rx() (c byte, valid bool) {
-	if reg.In8(hw.Base+LSR)&(1<<LSR_DR) == 0 {
-		return
-	}
+func (hw *UART) Rx(block bool) (c byte, valid bool) {
+	for {
+		if reg.In8(hw.Base+LSR)&(1<<LSR_DR) == 1 {
+			return byte(reg.In8(hw.Base + RBR)), true
+		}
 
-	return byte(reg.In8(hw.Base + RBR)), true
+		if !block {
+			return
+		}
+
+		if hw.rx != nil {
+			<-hw.rx
+		} else {
+			runtime.Gosched()
+		}
+	}
 }
 
 // Write data from buffer to serial port.
@@ -104,17 +133,20 @@ func (hw *UART) Write(buf []byte) (n int, _ error) {
 
 // Read available data to buffer from serial port.
 func (hw *UART) Read(buf []byte) (n int, _ error) {
-	var valid bool
+	block := true
 
-	for n = range buf {
-		buf[n], valid = hw.Rx()
+	for n < len(buf) {
+		c, valid := hw.Rx(block)
 
 		if !valid {
-			if n == 0 {
-				runtime.Gosched()
-			}
-
 			break
+		}
+
+		buf[n] = c
+		n++
+
+		if n == 1 {
+			block = false
 		}
 	}
 
