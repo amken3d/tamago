@@ -185,7 +185,18 @@ func (b *I2C) Read(addr uint8, buf []byte) error {
 		return fmt.Errorf("i2c: short read %d/%d", i, len(buf))
 	}
 
-	return nil
+	// Having every byte is not the same as the transfer being over. The last
+	// byte reaches the FIFO before the controller has generated the STOP, so
+	// returning here leaves the transaction still running on the wire, and a
+	// caller that issues its next one immediately corrupts both.
+	//
+	// It is a timing-dependent fault, which is what makes it worth the wait:
+	// slow callers never see it, and a fast one gets occasional reads answered
+	// from the previous register with nothing reporting an error. Writes have
+	// always waited; reads returning early was the asymmetry.
+	_, err := b.waitDone(deadline)
+
+	return err
 }
 
 // WriteRead writes then reads (separate transactions), for register-pointer
