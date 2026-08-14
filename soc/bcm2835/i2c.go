@@ -96,14 +96,21 @@ func (b *I2C) Init(hz uint32) error {
 func (b *I2C) waitDone(deadline time.Time) (uint32, error) {
 	for {
 		s := reg.Read(b.base + bscS)
-		if s&bscSDONE != 0 {
-			return s, nil
-		}
+
+		// The error flags are examined before DONE, not after it. The
+		// controller raises DONE on any transfer that has finished, including
+		// one that finished because the slave never acknowledged, so a check
+		// that takes DONE first reports success for a write to an address with
+		// nothing on it -- and a write is the only operation whose failure has
+		// no other symptom, since nothing comes back to look wrong.
 		if s&bscSERR != 0 {
 			return s, fmt.Errorf("i2c: no ack")
 		}
 		if s&bscSCLKT != 0 {
 			return s, fmt.Errorf("i2c: clock stretch timeout")
+		}
+		if s&bscSDONE != 0 {
+			return s, nil
 		}
 		if time.Now().After(deadline) {
 			return s, fmt.Errorf("i2c: timeout (s=%#x)", s)
@@ -177,6 +184,7 @@ func (b *I2C) Read(addr uint8, buf []byte) error {
 	if i < len(buf) {
 		return fmt.Errorf("i2c: short read %d/%d", i, len(buf))
 	}
+
 	return nil
 }
 
